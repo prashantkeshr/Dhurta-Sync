@@ -116,13 +116,12 @@
       </label>
 
       <!-- QR scan -->
-      <button class="dock-btn" onclick="app.openQR()">
+      <button class="dock-btn" onclick="app.switchQRTab('scan');app.openQR()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" rx="1"/>
-          <path d="M14 14h3v3M17 17v4M21 14v3"/>
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
         </svg>
-        <span>QR Code</span>
+        <span>Scan</span>
       </button>
 
       <!-- PIN divider -->
@@ -337,21 +336,61 @@
 <div class="modal-back" id="qr-modal" onclick="if(event.target===this)app.closeQR()">
   <div class="modal-sheet">
     <div class="sheet-head">
-      <h3>Scan to Join</h3>
+      <h3>Connect</h3>
       <button class="sheet-x" onclick="app.closeQR()">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
-    <div class="qr-frame">
-      <canvas id="qr-canvas"></canvas>
+
+    <!-- Tabs -->
+    <div class="qr-tabs">
+      <button class="qr-tab active" id="qr-tab-show" onclick="app.switchQRTab('show')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M17 17v4M21 14v3"/>
+        </svg>
+        My Code
+      </button>
+      <button class="qr-tab" id="qr-tab-scan" onclick="app.switchQRTab('scan')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        Scan QR
+      </button>
     </div>
-    <div class="qr-pin-row">
-      <span class="qr-pin-label">Room PIN</span>
-      <span class="qr-pin-val" id="qr-pin-text">----</span>
+
+    <!-- Show panel -->
+    <div id="qr-show-panel">
+      <div class="qr-frame">
+        <canvas id="qr-canvas"></canvas>
+      </div>
+      <div class="qr-pin-row">
+        <span class="qr-pin-label">Room PIN</span>
+        <span class="qr-pin-val" id="qr-pin-text">----</span>
+      </div>
+      <div class="qr-url" id="qr-url-text"></div>
     </div>
-    <div class="qr-url" id="qr-url-text"></div>
+
+    <!-- Scan panel -->
+    <div id="qr-scan-panel" class="hidden">
+      <div class="scan-viewport">
+        <video id="scan-video" autoplay playsinline muted></video>
+        <canvas id="scan-canvas" style="display:none"></canvas>
+        <div class="scan-frame-box">
+          <div class="scan-corner tl"></div>
+          <div class="scan-corner tr"></div>
+          <div class="scan-corner bl"></div>
+          <div class="scan-corner br"></div>
+          <div class="scan-line"></div>
+        </div>
+      </div>
+      <p class="scan-hint">Point your camera at the other device's QR code</p>
+      <div class="scan-status" id="scan-status">Waiting for camera…</div>
+    </div>
+
   </div>
 </div>
 
@@ -422,7 +461,8 @@
 <!-- Toast layer -->
 <div class="toast-layer" id="toast-layer"></div>
 
-<script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

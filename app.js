@@ -46,6 +46,7 @@ const app = (() => {
   let outTransfers = {}, inTransfers = {};
 
   let localStream = null, screenStream = null;
+  let _scanStream = null, _scanRAF = null, _currentQRTab = 'show';
   let callState = 'idle', callPeerId = null, pendingOffer = null;
   let isMuted = false, isCamOff = false;
 
@@ -954,14 +955,93 @@ const app = (() => {
   }
 
   /* Modals */
+  function switchQRTab(tab) {
+    _currentQRTab = tab;
+    document.getElementById('qr-tab-show')?.classList.toggle('active', tab==='show');
+    document.getElementById('qr-tab-scan')?.classList.toggle('active', tab==='scan');
+    document.getElementById('qr-show-panel')?.classList.toggle('hidden', tab!=='show');
+    document.getElementById('qr-scan-panel')?.classList.toggle('hidden', tab!=='scan');
+    if (tab==='scan') _startQRScan();
+    else _stopQRScan();
+  }
+
   function openQR() {
     document.getElementById('qr-modal')?.classList.add('open');
-    const url=location.href.split('?')[0]+'?pin='+currentPin;
-    const el=document.getElementById('qr-url-text'); if(el) el.textContent=url;
-    const pin=document.getElementById('qr-pin-text'); if(pin) pin.textContent=currentPin;
-    const cv=document.getElementById('qr-canvas'); if(cv) QR.render(cv,url,7);
+    const url = (location.href.split('?')[0]) + '?pin=' + currentPin;
+    const el = document.getElementById('qr-url-text'); if(el) el.textContent = url;
+    const pin = document.getElementById('qr-pin-text'); if(pin) pin.textContent = currentPin;
+    const cv = document.getElementById('qr-canvas'); if(cv) QR.render(cv, url, 7);
+    // apply current tab
+    switchQRTab(_currentQRTab);
   }
-  function closeQR() { document.getElementById('qr-modal')?.classList.remove('open'); }
+
+  function closeQR() {
+    document.getElementById('qr-modal')?.classList.remove('open');
+    _stopQRScan();
+    _currentQRTab = 'show';
+  }
+
+  /* ── QR Camera Scanner ── */
+  async function _startQRScan() {
+    const status = document.getElementById('scan-status');
+    if (status) status.textContent = 'Starting camera…';
+    try {
+      _scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 640 } }
+      });
+      const vid = document.getElementById('scan-video');
+      if (!vid) { _stopQRScan(); return; }
+      vid.srcObject = _scanStream;
+      await vid.play();
+      if (status) status.textContent = 'Scanning…';
+      _scanRAF = requestAnimationFrame(_scanFrame);
+    } catch(e) {
+      if (status) { status.textContent = 'Camera denied: ' + e.message; status.classList.add('found'); }
+    }
+  }
+
+  function _scanFrame() {
+    if (!_scanStream) return;
+    const vid = document.getElementById('scan-video');
+    const cv  = document.getElementById('scan-canvas');
+    if (!vid || !cv || vid.readyState < vid.HAVE_ENOUGH_DATA) {
+      _scanRAF = requestAnimationFrame(_scanFrame); return;
+    }
+    cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(vid, 0, 0);
+    const img = ctx.getImageData(0, 0, cv.width, cv.height);
+    const code = (typeof jsQR !== 'undefined') && jsQR(img.data, img.width, img.height);
+    if (code) {
+      const raw = code.data;
+      const match = raw.match(/[?&]pin=(\d{4})/);
+      const pin = match ? match[1] : (/^\d{4}$/.test(raw) ? raw : null);
+      if (pin) {
+        const st = document.getElementById('scan-status');
+        if (st) { st.textContent = '✓ Found room ' + pin + ' — joining…'; st.classList.add('found'); }
+        _stopQRScan();
+        setTimeout(() => {
+          closeQR();
+          const inp = document.getElementById('dock-pin-input');
+          if (inp) inp.value = pin;
+          // manually trigger joinRoom with scanned PIN
+          const v1 = document.getElementById('room-pin-input');
+          const v2 = document.getElementById('dock-pin-input');
+          if(v1) v1.value = ''; if(v2) v2.value = pin;
+          joinRoom();
+          toast('Joined room ' + pin + ' via QR scan');
+        }, 600);
+        return;
+      }
+    }
+    _scanRAF = requestAnimationFrame(_scanFrame);
+  }
+
+  function _stopQRScan() {
+    if (_scanRAF) { cancelAnimationFrame(_scanRAF); _scanRAF = null; }
+    if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; }
+    const vid = document.getElementById('scan-video'); if(vid) vid.srcObject = null;
+  }
 
   let _selColor=myColor, _selEmoji=myEmoji;
   function openProfile() {
@@ -1040,7 +1120,7 @@ const app = (() => {
   return {
     sendMessage, sendFiles, syncClipboard,
     setMode, switchTab, joinRoom, selectPeer,
-    openQR, closeQR,
+    openQR, closeQR, switchQRTab,
     openProfile, closeProfile, saveProfile,
     startCall, acceptCall, rejectCall, endCall,
     toggleMute, toggleCamera, toggleScreen,
