@@ -453,7 +453,7 @@ const app = (() => {
     const dc=pc.createDataChannel('dhurta',{ordered:true});
     _setupDC(id,dc);
     const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
-    publish({type:'OFFER',to:id,sdp:pc.localDescription});
+    publish({type:'OFFER',to:id,sdp:pc.localDescription.sdp,sdpType:'offer'});
     return new Promise((res,rej)=>{
       dc.onopen=()=>{ _setupDC(id,dc); res(dc); };
       dc.onerror=rej; setTimeout(()=>rej(new Error('DC timeout')),15000);
@@ -462,14 +462,16 @@ const app = (() => {
   async function _handleOffer(from,msg) {
     if(msg.to&&msg.to!==myId)return;
     const pc=_getOrCreatePc(from);
-    await pc.setRemoteDescription(new RTCSessionDescription({type:'offer',sdp:msg.sdp}));
+    const offerSdp = typeof msg.sdp==='object' ? msg.sdp.sdp : msg.sdp;
+    await pc.setRemoteDescription(new RTCSessionDescription({type:'offer',sdp:offerSdp}));
     const ans=await pc.createAnswer(); await pc.setLocalDescription(ans);
-    publish({type:'ANSWER',to:from,sdp:pc.localDescription});
+    publish({type:'ANSWER',to:from,sdp:pc.localDescription.sdp,sdpType:'answer'});
   }
   async function _handleAnswer(from,msg) {
     if(msg.to&&msg.to!==myId)return;
     const pc=pcs[from]; if(!pc)return;
-    await pc.setRemoteDescription(new RTCSessionDescription({type:'answer',sdp:msg.sdp}));
+    const ansSdp = typeof msg.sdp==='object' ? msg.sdp.sdp : msg.sdp;
+    await pc.setRemoteDescription(new RTCSessionDescription({type:'answer',sdp:ansSdp}));
   }
   async function _handleIce(from,msg) {
     if(msg.to&&msg.to!==myId)return;
@@ -782,7 +784,7 @@ const app = (() => {
     if(localStream) for(const t of localStream.getTracks()) pc.addTrack(t,localStream);
     const dc=pc.createDataChannel('dhurta',{ordered:true}); _setupDC(id,dc);
     const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
-    publish({type:'OFFER',to:id,sdp:pc.localDescription});
+    publish({type:'OFFER',to:id,sdp:pc.localDescription.sdp,sdpType:'offer'});
   }
   function _handleCallRequest(from,msg) {
     if(msg.to&&msg.to!==myId)return;

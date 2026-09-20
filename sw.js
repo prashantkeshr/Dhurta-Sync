@@ -3,14 +3,14 @@
    Cache-first PWA for 100% offline launch
    ============================================================ */
 
-const CACHE = 'dhurta-v3';
+const CACHE = 'dhurta-v4';
 const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   'https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js',
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
 ];
 
 self.addEventListener('install', e => {
