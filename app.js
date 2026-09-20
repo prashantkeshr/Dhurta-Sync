@@ -1213,6 +1213,206 @@ const app = (() => {
     if(urlPin) setMode('transfer');
 
     connectMQTT();
+
+    // Nav 3D connection animation
+    _startNavCanvas();
+    window.addEventListener('resize', _startNavCanvas);
+
+    // Chat futuristic background
+    _startChatBgCanvas();
+  }
+
+  /* ─────────────── NAV CANVAS — 3D DEVICE CONNECTION ─────────────── */
+  function _startNavCanvas() {
+    const cv = document.getElementById('nav-connection-canvas');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const nav = cv.parentElement;
+    cv.width = nav.offsetWidth;
+    cv.height = nav.offsetHeight;
+    const W = cv.width, H = cv.height;
+    const CY = H / 2;
+
+    // Two device positions: left anchor (laptop) and right anchor (phone)
+    const devL = { x: W * 0.12, y: CY };
+    const devR = { x: W * 0.88, y: CY };
+
+    // Travelling data dots
+    const dots = Array.from({length: 7}, (_, i) => ({
+      t: i / 7,          // 0..1 progress along path
+      speed: 0.0008 + Math.random() * 0.0006,
+      dir: i % 2 === 0 ? 1 : -1,  // alternating directions
+      size: 2.5 + Math.random() * 2,
+      color: i % 3 === 0 ? '#06b6d4' : i % 3 === 1 ? '#818cf8' : '#f97316',
+    }));
+
+    // Bezier control points (gentle S-curve in nav space)
+    const cp1 = { x: W * 0.35, y: CY - H * 0.6 };
+    const cp2 = { x: W * 0.65, y: CY + H * 0.6 };
+
+    function bezier(t) {
+      const u = 1 - t;
+      return {
+        x: u*u*u*devL.x + 3*u*u*t*cp1.x + 3*u*t*t*cp2.x + t*t*t*devR.x,
+        y: u*u*u*devL.y + 3*u*u*t*cp1.y + 3*u*t*t*cp2.y + t*t*t*devR.y,
+      };
+    }
+
+    let raf;
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Draw the curved path
+      const grad = ctx.createLinearGradient(devL.x, CY, devR.x, CY);
+      grad.addColorStop(0,   'rgba(6,182,212,.6)');
+      grad.addColorStop(0.5, 'rgba(129,140,248,.4)');
+      grad.addColorStop(1,   'rgba(249,115,22,.6)');
+      ctx.beginPath();
+      ctx.moveTo(devL.x, devL.y);
+      ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, devR.x, devR.y);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 6]);
+      ctx.globalAlpha = 0.7;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      // Laptop device node (cyan)
+      const lgr = ctx.createRadialGradient(devL.x, devL.y, 0, devL.x, devL.y, 8);
+      lgr.addColorStop(0, 'rgba(6,182,212,1)');
+      lgr.addColorStop(1, 'rgba(6,182,212,0)');
+      ctx.beginPath(); ctx.arc(devL.x, devL.y, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#06b6d4'; ctx.fill();
+      ctx.beginPath(); ctx.arc(devL.x, devL.y, 9, 0, Math.PI*2);
+      ctx.fillStyle = lgr; ctx.fill();
+
+      // Phone device node (orange)
+      const rgr = ctx.createRadialGradient(devR.x, devR.y, 0, devR.x, devR.y, 8);
+      rgr.addColorStop(0, 'rgba(249,115,22,1)');
+      rgr.addColorStop(1, 'rgba(249,115,22,0)');
+      ctx.beginPath(); ctx.arc(devR.x, devR.y, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#f97316'; ctx.fill();
+      ctx.beginPath(); ctx.arc(devR.x, devR.y, 9, 0, Math.PI*2);
+      ctx.fillStyle = rgr; ctx.fill();
+
+      // Travelling dots along the bezier
+      const now = performance.now();
+      dots.forEach(d => {
+        d.t += d.speed * d.dir;
+        if (d.t > 1) d.t = 0;
+        if (d.t < 0) d.t = 1;
+        const pos = bezier(d.t);
+        const gr = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, d.size*2);
+        gr.addColorStop(0, d.color);
+        gr.addColorStop(1, 'transparent');
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, d.size, 0, Math.PI*2);
+        ctx.fillStyle = gr; ctx.fill();
+        // Trail
+        const prev = bezier(Math.max(0, d.t - d.dir * 0.04));
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y); ctx.lineTo(prev.x, prev.y);
+        ctx.strokeStyle = d.color; ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+      });
+
+      raf = requestAnimationFrame(draw);
+    }
+
+    if (cv._navRaf) cancelAnimationFrame(cv._navRaf);
+    draw();
+    cv._navRaf = raf;
+  }
+
+  /* ─────────────── CHAT BG CANVAS — FUTURISTIC NEURAL GRID ─────────────── */
+  function _startChatBgCanvas() {
+    const cv = document.getElementById('chat-bg-canvas');
+    if (!cv) return;
+
+    const ctx = cv.getContext('2d');
+    let W, H, nodes, raf;
+
+    function resize() {
+      const parent = cv.parentElement;
+      W = cv.width  = parent.offsetWidth;
+      H = cv.height = parent.offsetHeight;
+      _buildNodes();
+    }
+
+    function _buildNodes() {
+      const count = Math.min(60, Math.floor(W * H / 14000));
+      nodes = Array.from({length: count}, () => ({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - .5) * 0.25,
+        vy: (Math.random() - .5) * 0.25,
+        r:  1.5 + Math.random() * 2,
+        hue: Math.random() > .5 ? 190 : 250,  // cyan or indigo
+        pulse: Math.random() * Math.PI * 2,
+      }));
+    }
+
+    const MAX_DIST = 140;
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Move nodes
+      nodes.forEach(n => {
+        n.x += n.vx; n.y += n.vy;
+        n.pulse += 0.025;
+        if (n.x < 0 || n.x > W) n.vx *= -1;
+        if (n.y < 0 || n.y > H) n.vy *= -1;
+      });
+
+      // Draw connections
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i], b = nodes[j];
+          const dx = a.x - b.x, dy = a.y - b.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist > MAX_DIST) continue;
+          const alpha = (1 - dist / MAX_DIST) * 0.55;
+          const hue = (a.hue + b.hue) / 2;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+          ctx.strokeStyle = `hsla(${hue},90%,65%,${alpha})`;
+          ctx.lineWidth = 0.6;
+          ctx.stroke();
+        }
+      }
+
+      // Draw nodes
+      nodes.forEach(n => {
+        const glow = 0.7 + 0.3 * Math.sin(n.pulse);
+        const gr = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 3);
+        gr.addColorStop(0, `hsla(${n.hue},90%,70%,${glow})`);
+        gr.addColorStop(1, `hsla(${n.hue},90%,70%,0)`);
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r * 3, 0, Math.PI*2);
+        ctx.fillStyle = gr; ctx.fill();
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+        ctx.fillStyle = `hsl(${n.hue},90%,75%)`; ctx.fill();
+      });
+
+      // Hex grid overlay (very subtle)
+      ctx.strokeStyle = 'rgba(129,140,248,.04)';
+      ctx.lineWidth = 0.5;
+      const gs = 56;
+      for (let x = 0; x < W + gs; x += gs) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for (let y = 0; y < H + gs; y += gs) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+
+      raf = requestAnimationFrame(draw);
+    }
+
+    if (cv._bgRaf) cancelAnimationFrame(cv._bgRaf);
+    resize();
+    draw();
+    cv._bgRaf = raf;
+    window.addEventListener('resize', resize);
   }
 
   document.addEventListener('DOMContentLoaded', init);

@@ -49,8 +49,8 @@
 
 <!-- ══ Manifest & Icons ══ -->
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23818cf8'/><path d='M16 4L8 17h6v11L24 15h-6V4z' fill='white'/></svg>">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='38' fill='%23818cf8'/><path d='M96 28L52 100h36v64l56-72H108V28z' fill='white'/></svg>">
+<link rel="icon" type="image/png" href="sync.png">
+<link rel="apple-touch-icon" href="sync.png">
 
 <!-- ══ Structured Data — JSON-LD ══ -->
 <script type="application/ld+json">
@@ -170,10 +170,11 @@
      TOP NAVIGATION
 ══════════════════════════════════════════════════ -->
 <header class="top-nav">
+  <!-- 3-D connection animation canvas (spans full nav width behind content) -->
+  <canvas id="nav-connection-canvas" class="nav-canvas" aria-hidden="true"></canvas>
+
   <div class="nav-brand">
-    <svg class="brand-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M13 2L4.09 12.42a1 1 0 0 0 .79 1.58H11v8l8.91-10.42A1 1 0 0 0 19 10H13V2z" fill="currentColor"/>
-    </svg>
+    <img src="sync.png" alt="Dhurta Sync" class="brand-icon-img">
     <span class="brand-name">Dhurta</span>
     <span class="brand-tag">Sync</span>
   </div>
@@ -477,13 +478,14 @@
         </div>
       </div>
 
+      <!-- Futuristic animated background for chat -->
+      <canvas id="chat-bg-canvas" class="chat-bg-canvas" aria-hidden="true"></canvas>
+
       <!-- Message stream -->
       <div class="msg-stream" id="chat-stream">
         <div class="chat-empty" id="chat-welcome">
           <div class="empty-icon">
-            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
+            <img src="sync.png" alt="" width="72" height="72" style="opacity:.85;filter:drop-shadow(0 0 18px #06b6d4cc)">
           </div>
           <h3>Start a conversation</h3>
           <p>Join a room with a 4-digit PIN, or scan a QR code to connect with nearby devices.</p>

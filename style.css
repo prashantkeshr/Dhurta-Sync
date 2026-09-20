@@ -119,13 +119,32 @@ html, body {
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* 3-D connection canvas — absolute behind nav content */
+.nav-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none; z-index: 0;
+  opacity: .55;
 }
 
 /* Brand */
-.nav-brand { display:flex; align-items:center; gap:7px; text-decoration:none; }
+.nav-brand { display:flex; align-items:center; gap:8px; text-decoration:none; position:relative; z-index:1; }
 .brand-icon { width:20px; height:20px; color:var(--accent); flex-shrink:0; }
-.brand-name { font-size:15px; font-weight:700; color:var(--t1); letter-spacing:-.3px; }
-.brand-tag  { font-size:10px; font-weight:600; color:var(--t3); letter-spacing:.5px; text-transform:uppercase; margin-top:1px; }
+.brand-icon-img {
+  width: 30px; height: 30px;
+  object-fit: contain; flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(6,182,212,.7));
+  animation: iconPulse 3s ease-in-out infinite;
+}
+@keyframes iconPulse {
+  0%,100% { filter: drop-shadow(0 0 6px rgba(6,182,212,.6)); }
+  50%      { filter: drop-shadow(0 0 14px rgba(6,182,212,1)) drop-shadow(0 0 28px rgba(99,102,241,.5)); }
+}
+.brand-name { font-size:15px; font-weight:700; color:var(--t1); letter-spacing:-.3px; position:relative; z-index:1; }
+.brand-tag  { font-size:10px; font-weight:600; color:var(--t3); letter-spacing:.5px; text-transform:uppercase; margin-top:1px; position:relative; z-index:1; }
 
 /* Mode pill toggle */
 .mode-pill {
@@ -134,6 +153,7 @@ html, body {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 3px;
+  position: relative; z-index: 1;
 }
 .mode-pill-btn {
   display:flex; align-items:center; gap:6px;
@@ -150,7 +170,7 @@ html, body {
 .mode-pill-btn:hover:not(.active) { color:var(--t2); background:rgba(255,255,255,.04); }
 
 /* Nav end */
-.nav-end { display:flex; align-items:center; gap:8px; }
+.nav-end { display:flex; align-items:center; gap:8px; position:relative; z-index:1; }
 
 .status-chip {
   display:flex; align-items:center; gap:6px;
@@ -477,8 +497,19 @@ html, body {
 /* ── Chat Main ── */
 .chat-main {
   flex:1; display:flex; flex-direction:column;
-  overflow:hidden; background:var(--bg);
+  overflow:hidden;
+  background: radial-gradient(ellipse at 20% 10%, rgba(6,182,212,.04) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 90%, rgba(99,102,241,.05) 0%, transparent 60%),
+              var(--bg);
   position:relative;
+}
+
+/* Futuristic animated background canvas */
+.chat-bg-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none; z-index: 0;
+  opacity: .18;
 }
 
 /* Video dock */
@@ -526,7 +557,7 @@ html, body {
 .msg-stream {
   flex:1; overflow-y:auto; padding:16px 6%;
   display:flex; flex-direction:column; gap:2px;
-  position:relative;
+  position:relative; z-index:1;
 }
 .msg-stream::-webkit-scrollbar { width:3px; }
 .msg-stream::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }

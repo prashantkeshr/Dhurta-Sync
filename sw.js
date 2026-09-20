@@ -3,13 +3,15 @@
    Cache-first PWA for 100% offline launch
    ============================================================ */
 
-const CACHE = 'dhurta-v5';
+const CACHE = 'dhurta-v6';
 const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
+  './sync.png',
+  './sync.svg',
   './og-image.svg',
   './robots.txt',
   './llms.txt',
