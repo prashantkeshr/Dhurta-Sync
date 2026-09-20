@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#09090b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Dhurta Sync</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ─── Ambient point-light that follows cursor ─── -->
+<div class="ambient-light" id="ambient-light"></div>
+
+<!-- ══════════════════════════════════════════════════
+     TOP NAVIGATION
+══════════════════════════════════════════════════ -->
+<header class="top-nav">
+  <div class="nav-brand">
+    <svg class="brand-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M13 2L4.09 12.42a1 1 0 0 0 .79 1.58H11v8l8.91-10.42A1 1 0 0 0 19 10H13V2z" fill="currentColor"/>
+    </svg>
+    <span class="brand-name">Dhurta</span>
+    <span class="brand-tag">Sync</span>
+  </div>
+
+  <!-- Mode switch pill -->
+  <div class="mode-pill" role="group" aria-label="View mode">
+    <button class="mode-pill-btn active" id="mode-btn-transfer" data-mode="transfer" onclick="app.setMode('transfer')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+      </svg>
+      Transfer
+    </button>
+    <button class="mode-pill-btn" id="mode-btn-chat" data-mode="chat" onclick="app.setMode('chat')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      Chat
+    </button>
+  </div>
+
+  <div class="nav-end">
+    <!-- Connection status -->
+    <button class="status-chip" id="status-chip" onclick="app.selfRepair()" title="Click to re-sync">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Connecting…</span>
+    </button>
+    <!-- Room PIN chip -->
+    <button class="room-chip" id="room-chip" onclick="app.openQR()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <path d="M14 14h3v3M17 17v4M21 14v3"/>
+      </svg>
+      <span id="room-chip-pin">----</span>
+    </button>
+    <!-- Profile avatar -->
+    <button class="nav-avatar-btn" onclick="app.openProfile()" title="Edit profile">
+      <canvas id="my-avatar" width="32" height="32"></canvas>
+    </button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════
+     TRANSFER MODE
+══════════════════════════════════════════════════ -->
+<div class="mode-panel" id="panel-transfer">
+
+  <!-- Radar stage -->
+  <div class="radar-stage" id="radar-stage">
+    <canvas class="radar-canvas" id="radar-canvas"></canvas>
+
+    <!-- Self orb — center -->
+    <div class="device-orb self-orb" id="self-orb">
+      <div class="orb-glow"></div>
+      <canvas class="orb-avatar" id="orb-avatar" width="52" height="52"></canvas>
+      <div class="orb-label" id="orb-name">You</div>
+    </div>
+
+    <!-- Peer orbs — rendered by JS around the radar -->
+    <div class="peers-layer" id="peers-layer"></div>
+
+    <!-- Connection lines drawn on canvas; blip labels here -->
+    <div class="radar-hint" id="radar-hint">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+      </svg>
+      Looking for nearby devices…
+    </div>
+  </div>
+
+  <!-- Incoming beam cards -->
+  <div class="beam-strip" id="beam-notifications"></div>
+
+  <!-- Connection dock -->
+  <div class="connect-dock">
+    <div class="dock-row">
+
+      <!-- Send files -->
+      <label class="dock-btn" title="Send files">
+        <input type="file" id="file-input-transfer" multiple style="display:none" onchange="app.sendFiles(this.files)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span>Send</span>
+      </label>
+
+      <!-- QR scan -->
+      <button class="dock-btn" onclick="app.openQR()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+          <path d="M14 14h3v3M17 17v4M21 14v3"/>
+        </svg>
+        <span>QR Code</span>
+      </button>
+
+      <!-- PIN divider -->
+      <div class="dock-divider">or</div>
+
+      <!-- PIN entry -->
+      <div class="dock-pin-wrap">
+        <input type="text" class="dock-pin-input" id="dock-pin-input" maxlength="4"
+               placeholder="0000" inputmode="numeric" pattern="[0-9]*"
+               onkeydown="if(event.key==='Enter')app.joinRoom()">
+        <button class="dock-pin-go" onclick="app.joinRoom()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Clipboard -->
+      <button class="dock-btn" id="clip-btn-transfer" onclick="app.syncClipboard()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="2" width="6" height="4" rx="1"/>
+          <path d="M8 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-2"/>
+        </svg>
+        <span>Clipboard</span>
+      </button>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     CHAT MODE
+══════════════════════════════════════════════════ -->
+<div class="mode-panel hidden" id="panel-chat">
+
+  <!-- Mobile nav tabs -->
+  <nav class="mobile-tabs">
+    <button class="mtab active" data-tab="chat" onclick="app.switchTab('chat')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      Chat
+    </button>
+    <button class="mtab" data-tab="team" onclick="app.switchTab('team')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      Team
+    </button>
+    <button class="mtab" data-tab="calls" onclick="app.switchTab('calls')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+      </svg>
+      Calls
+    </button>
+  </nav>
+
+  <div class="chat-workspace">
+
+    <!-- ── SIDEBAR: peer list ── -->
+    <aside class="chat-sidebar" id="chat-sidebar">
+      <div class="sidebar-head">
+        <span class="sh-title">Team</span>
+        <span class="sh-count" id="online-count">1</span>
+      </div>
+      <div class="peer-list" id="peer-list"></div>
+      <div class="sidebar-foot">
+        <div class="room-row">
+          <input type="text" id="room-pin-input" class="room-pin-mini" maxlength="4"
+                 placeholder="Room PIN" inputmode="numeric"
+                 onkeydown="if(event.key==='Enter')app.joinRoom()">
+          <button class="sf-join" onclick="app.joinRoom()">Join</button>
+        </div>
+        <button class="sf-profile" onclick="app.openProfile()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          Edit Profile
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── CHAT MAIN ── -->
+    <main class="chat-main" id="chat-main-pane">
+
+      <!-- Video / call dock -->
+      <div class="video-dock" id="video-dock">
+        <div class="video-wrap">
+          <video id="vid-remote" autoplay playsinline></video>
+          <video id="vid-local"  autoplay playsinline muted class="vid-pip"></video>
+          <div class="cursor-ptr" id="screen-pointer"></div>
+        </div>
+        <div class="call-bar">
+          <button class="call-ctrl" id="btn-mute" onclick="app.toggleMute()" title="Mute">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <button class="call-ctrl" id="btn-cam" onclick="app.toggleCamera()" title="Camera">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+          </button>
+          <button class="call-ctrl" id="btn-screen" onclick="app.toggleScreen()" title="Screen share">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </button>
+          <button class="call-ctrl call-end" onclick="app.endCall()" title="End call">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.88 9.2a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.99.5h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91"/>
+              <line x1="23" y1="1" x2="1" y2="23"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Message stream -->
+      <div class="msg-stream" id="chat-stream">
+        <div class="chat-empty" id="chat-welcome">
+          <div class="empty-icon">
+            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <h3>Start a conversation</h3>
+          <p>Join a room with a 4-digit PIN, or scan a QR code to connect with nearby devices.</p>
+        </div>
+      </div>
+
+      <!-- Transfer tray (floating) -->
+      <div class="transfer-tray" id="transfer-tray">
+        <div class="tray-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="8 17 12 21 16 17"/><line x1="12" y1="3" x2="12" y2="21"/>
+          </svg>
+          Transfers
+        </div>
+        <div id="transfers-list"></div>
+      </div>
+
+      <!-- Input bar -->
+      <div class="input-bar">
+        <label class="input-action" title="Attach file">
+          <input type="file" id="file-input" multiple style="display:none" onchange="app.sendFiles(this.files)">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </label>
+        <button class="input-action clipboard-btn" onclick="app.syncClipboard()" title="Sync clipboard">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="2" width="6" height="4" rx="1"/>
+            <path d="M8 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-2"/>
+          </svg>
+        </button>
+        <input type="text" id="msg-input" class="msg-field" placeholder="Message…">
+        <button class="send-btn" onclick="app.sendMessage()">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </main>
+
+    <!-- ── CALLS PANEL ── -->
+    <aside class="calls-panel" id="calls-panel">
+      <div class="sidebar-head">
+        <span class="sh-title">Call</span>
+      </div>
+      <div class="call-panel-body">
+        <div class="call-peer-card" id="call-peer-display">
+          <div class="call-peer-avatar" id="call-target-avatar"></div>
+          <div class="call-peer-name" id="call-target-name">Select a peer →</div>
+        </div>
+        <div class="call-type-grid">
+          <button class="ctype-btn voice" onclick="app.startCall('voice')">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 9.7 19.79 19.79 0 0 1 1.64 1 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.06 6.06l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.94 16.92z"/>
+            </svg>
+            Voice
+          </button>
+          <button class="ctype-btn video" onclick="app.startCall('video')">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+            Video
+          </button>
+          <button class="ctype-btn screen" onclick="app.startCall('screen')">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            Screen
+          </button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════════════ -->
+
+<!-- QR -->
+<div class="modal-back" id="qr-modal" onclick="if(event.target===this)app.closeQR()">
+  <div class="modal-sheet">
+    <div class="sheet-head">
+      <h3>Scan to Join</h3>
+      <button class="sheet-x" onclick="app.closeQR()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="qr-frame">
+      <canvas id="qr-canvas"></canvas>
+    </div>
+    <div class="qr-pin-row">
+      <span class="qr-pin-label">Room PIN</span>
+      <span class="qr-pin-val" id="qr-pin-text">----</span>
+    </div>
+    <div class="qr-url" id="qr-url-text"></div>
+  </div>
+</div>
+
+<!-- Profile -->
+<div class="modal-back" id="profile-modal" onclick="if(event.target===this)app.closeProfile()">
+  <div class="modal-sheet">
+    <div class="sheet-head">
+      <h3>Profile</h3>
+      <button class="sheet-x" onclick="app.closeProfile()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="sheet-body">
+      <div class="profile-av-wrap">
+        <canvas id="profile-avatar-preview" width="80" height="80"></canvas>
+      </div>
+      <label class="form-label">Display Name</label>
+      <input type="text" id="profile-name-input" class="form-input" placeholder="Your name" maxlength="30">
+      <label class="form-label">Colour</label>
+      <div class="color-grid" id="avatar-palette"></div>
+      <label class="form-label">Avatar</label>
+      <div class="emoji-grid" id="emoji-palette"></div>
+      <button class="btn-primary" onclick="app.saveProfile()">Save Profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- Incoming call banner -->
+<div class="call-banner" id="incoming-banner">
+  <div class="cb-avatar" id="incoming-avatar"></div>
+  <div class="cb-info">
+    <div class="cb-name" id="incoming-name">Caller</div>
+    <div class="cb-type" id="incoming-type">Voice Call</div>
+  </div>
+  <div class="cb-actions">
+    <button class="cb-accept" onclick="app.acceptCall()">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 9.7 19.79 19.79 0 0 1 1.64 1 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.06 6.06l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.94 16.92z"/>
+      </svg>
+    </button>
+    <button class="cb-reject" onclick="app.rejectCall()">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.88 9.2a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.99.5h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91"/>
+        <line x1="23" y1="1" x2="1" y2="23"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="app.closeLightbox()">
+  <img id="lightbox-img" src="" alt="Preview">
+</div>
+
+<!-- Global drag overlay -->
+<div class="drag-overlay" id="drag-overlay">
+  <div class="drag-inner">
+    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    <p>Drop to beam files</p>
+  </div>
+</div>
+
+<!-- Toast layer -->
+<div class="toast-layer" id="toast-layer"></div>
+
+<script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
