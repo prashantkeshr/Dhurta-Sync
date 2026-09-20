@@ -39,6 +39,12 @@
       </svg>
       Transfer
     </button>
+    <button class="mode-pill-btn" id="mode-btn-beam" data-mode="beam" onclick="app.setMode('beam')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <polyline points="8 17 12 21 16 17"/><line x1="12" y1="3" x2="12" y2="21"/>
+      </svg>
+      Beam
+    </button>
     <button class="mode-pill-btn" id="mode-btn-chat" data-mode="chat" onclick="app.setMode('chat')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -131,6 +137,7 @@
       <div class="dock-pin-wrap">
         <input type="text" class="dock-pin-input" id="dock-pin-input" maxlength="4"
                placeholder="0000" inputmode="numeric" pattern="[0-9]*"
+               oninput="if(this.value.length===4)app.joinRoom()"
                onkeydown="if(event.key==='Enter')app.joinRoom()">
         <button class="dock-pin-go" onclick="app.joinRoom()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -149,6 +156,83 @@
       </button>
 
     </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     BEAM MODE  (ShareMe / Xender style)
+══════════════════════════════════════════════════ -->
+<div class="mode-panel hidden" id="panel-beam">
+
+  <!-- Peers bar -->
+  <div class="beam-peers-bar" id="beam-peers-bar">
+    <div class="bpb-hint" id="beam-peer-hint">No peers — enter a PIN or scan QR to connect</div>
+  </div>
+
+  <!-- Central send orb -->
+  <div class="beam-center">
+    <label class="beam-send-orb" id="beam-send-orb" title="Tap to send files">
+      <input type="file" id="file-input-beam" multiple style="display:none" onchange="app.sendFiles(this.files)">
+      <div class="bso-rings">
+        <div class="bso-ring r1"></div>
+        <div class="bso-ring r2"></div>
+        <div class="bso-ring r3"></div>
+      </div>
+      <div class="bso-core">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        <span class="bso-label">Send</span>
+      </div>
+    </label>
+
+    <!-- Speed / progress ring shown during transfer -->
+    <div class="beam-progress-ring" id="beam-progress-ring" style="display:none">
+      <svg viewBox="0 0 120 120">
+        <circle class="bpr-track" cx="60" cy="60" r="52"/>
+        <circle class="bpr-fill"  cx="60" cy="60" r="52" id="bpr-arc"/>
+      </svg>
+      <div class="bpr-info">
+        <div class="bpr-pct"  id="bpr-pct">0%</div>
+        <div class="bpr-spd"  id="bpr-spd">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Received files grid -->
+  <div class="beam-received" id="beam-received">
+    <div class="br-header">
+      <span class="br-title">Received</span>
+      <button class="br-clear" onclick="document.getElementById('beam-grid').innerHTML=''">Clear</button>
+    </div>
+    <div class="beam-grid" id="beam-grid"></div>
+    <div class="br-empty" id="br-empty">Received files will appear here</div>
+  </div>
+
+  <!-- Bottom row: scan + PIN -->
+  <div class="beam-footer">
+    <button class="beam-foot-btn" onclick="app.switchQRTab('scan');app.openQR()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      Scan QR
+    </button>
+    <div class="beam-pin-row">
+      <input type="text" class="beam-pin-input" id="beam-pin-input" maxlength="4"
+             placeholder="PIN" inputmode="numeric"
+             oninput="if(this.value.length===4)app.joinRoom()"
+             onkeydown="if(event.key==='Enter')app.joinRoom()">
+    </div>
+    <button class="beam-foot-btn" onclick="app.openQR()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M17 17v4M21 14v3"/>
+      </svg>
+      My QR
+    </button>
   </div>
 
 </div>
@@ -194,6 +278,7 @@
         <div class="room-row">
           <input type="text" id="room-pin-input" class="room-pin-mini" maxlength="4"
                  placeholder="Room PIN" inputmode="numeric"
+                 oninput="if(this.value.length===4)app.joinRoom()"
                  onkeydown="if(event.key==='Enter')app.joinRoom()">
           <button class="sf-join" onclick="app.joinRoom()">Join</button>
         </div>

@@ -44,6 +44,7 @@ const app = (() => {
   let selectedPeerId = null;
   let hbTimer = null, pruneTimer = null;
   let outTransfers = {}, inTransfers = {};
+  const _msgDedup = new Set();
 
   let localStream = null, screenStream = null;
   let _scanStream = null, _scanRAF = null, _currentQRTab = 'show';
@@ -388,14 +389,27 @@ const app = (() => {
       const isNew=!peers[from];
       peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now()};
       if (type==='DISCOVER_PING') publish({type:'DISCOVER_PONG',name:myName,color:myColor,emoji:myEmoji,ts:Date.now()});
-      if (isNew) { renderRoster(); _renderRadarPeers(); toast('🔵 '+msg.name+' joined room '+currentPin); }
-      else { _updatePeerItem(from); _updatePeerOrb(from); }
+      if (isNew) {
+        renderRoster(); _renderRadarPeers();
+        toast('🔵 '+msg.name+' joined');
+        // auto-establish secure channel so chat/files work immediately
+        setTimeout(()=>_ensureDC(from).catch(()=>{}), 800);
+      } else { _updatePeerItem(from); _updatePeerOrb(from); peers[from].lastSeen=Date.now(); }
     }
     if (type==='DISCOVER_PONG') {
       const isNew=!peers[from];
       peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now()};
-      if (isNew) { renderRoster(); _renderRadarPeers(); }
+      if (isNew) {
+        renderRoster(); _renderRadarPeers();
+        setTimeout(()=>_ensureDC(from).catch(()=>{}), 800);
+      }
     }
+    // MQTT chat — works even before WebRTC DC is ready
+    if (type==='CHAT') {
+      if (!peers[from]) peers[from]={name:msg.name||from.slice(0,6),color:msg.color||'#888',emoji:msg.emoji||'😊',lastSeen:Date.now()};
+      _appendMessage({from, text:msg.text, mqttName:msg.name, mqttColor:msg.color});
+    }
+    if (type==='TYPING_MQTT') _handleTyping(from,msg);
     if (type==='OFFER')        _handleOffer(from,msg);
     if (type==='ANSWER')       _handleAnswer(from,msg);
     if (type==='ICE')          _handleIce(from,msg);
@@ -467,7 +481,7 @@ const app = (() => {
   function _handleDCMsg(id, data) {
     if (typeof data==='string') {
       let msg; try{msg=JSON.parse(data);}catch{return;}
-      if(msg.type==='CHAT')         _appendMessage({from:id,text:msg.text});
+      if(msg.type==='CHAT')         _appendMessage({from:id,text:msg.text,mqttName:msg.name,mqttColor:msg.color});
       if(msg.type==='FILE_META')    { inTransfers[msg.transferId]={meta:msg,chunks:[],received:0,startTime:Date.now()}; _appendIncomingFile(id,msg); }
       if(msg.type==='FILE_DONE')    { const t=inTransfers[msg.transferId]; if(!t)return; _finalizeFile(msg.transferId,new Blob(t.chunks,{type:t.meta.mimeType}),t.meta); delete inTransfers[msg.transferId]; _activeXfers=Math.max(0,_activeXfers-1); if(!_activeXfers&&_particles)_particles.stop(); }
       if(msg.type==='CLIPBOARD_DATA') _receiveClipboard(id,msg);
@@ -500,7 +514,11 @@ const app = (() => {
 
   /* ─────────────── CHAT ─────────────── */
   let _typingTimers = {};
-  function _onTyping() { publish({type:'TYPING',active:true}); clearTimeout(_typingTimers._out); _typingTimers._out=setTimeout(()=>publish({type:'TYPING',active:false}),2000); }
+  function _onTyping() {
+    publish({type:'TYPING_MQTT',active:true,name:myName});
+    clearTimeout(_typingTimers._out);
+    _typingTimers._out=setTimeout(()=>publish({type:'TYPING_MQTT',active:false}),2000);
+  }
   function _handleTyping(from,msg) {
     const el=document.getElementById('typing_'+from);
     if(msg.active){
@@ -514,16 +532,24 @@ const app = (() => {
     const text=input.value.trim(); if(!text)return;
     input.value='';
     _appendMessage({from:myId,text});
-    const p=JSON.stringify({type:'CHAT',text,ts:Date.now()});
+    // Broadcast over MQTT (works immediately, no DC needed)
+    publish({type:'CHAT', text, name:myName, color:myColor, emoji:myEmoji, ts:Date.now()});
+    // Also send via DC for peers who may be in different MQTT rooms
+    const p=JSON.stringify({type:'CHAT',text,name:myName,color:myColor,ts:Date.now()});
     for(const id in dcs) if(dcs[id].readyState==='open') dcs[id].send(p);
   }
 
-  function _appendMessage({from,text}) {
+  function _appendMessage({from,text,mqttName,mqttColor}) {
+    // dedupe: skip if same message arrived via both DC and MQTT
+    const dedupKey = from+'|'+text.slice(0,20);
+    if(_msgDedup.has(dedupKey)){return;} _msgDedup.add(dedupKey);
+    setTimeout(()=>_msgDedup.delete(dedupKey), 3000);
+
     _hideEmpty();
     document.getElementById('typing_'+from)?.remove();
     const isMe=from===myId; const peer=peers[from];
-    const name=isMe?myName:(peer?.name||from.slice(0,8));
-    const color=isMe?myColor:(peer?.color||'#888');
+    const name=isMe?myName:(peer?.name||mqttName||from.slice(0,8));
+    const color=isMe?myColor:(peer?.color||mqttColor||'#888');
     const row=document.createElement('div'); row.className='msg-row '+(isMe?'out':'in');
     const bub=document.createElement('div'); bub.className='bubble';
     if(!isMe){const s=document.createElement('div');s.className='bubble-sender';s.style.color=color;s.textContent=name;bub.appendChild(s);}
@@ -679,6 +705,7 @@ const app = (() => {
     const sp=document.getElementById('fspeed_'+tId); if(sp&&pct<100) sp.textContent=formatBytes(speedBs)+'/s · '+pct.toFixed(0)+'%';
     const bfill=document.getElementById('bcfp_'+tId); if(bfill) bfill.style.width=pct.toFixed(1)+'%';
     const btn=document.getElementById('fd_'+tId); if(btn&&pct<100&&!btn.disabled) btn.textContent=pct.toFixed(0)+'%';
+    if(currentMode==='beam') _updateBeamProgress(pct, speedBs);
   }
 
   function _finalizeFile(tId,blob,meta) {
@@ -698,6 +725,7 @@ const app = (() => {
       const fc=document.getElementById('fc_'+tId);
       if(fc){const img=document.createElement('img');img.src=URL.createObjectURL(blob);img.style.cssText='max-width:100%;margin-top:8px;border-radius:7px;cursor:pointer;display:block;';img.onclick=()=>openLightbox(img.src);fc.appendChild(img);}
     }
+    if(currentMode==='beam') { _addToBeamGrid(blob, meta); _updateBeamProgress(100, 0); }
     toast('📥 '+meta.name+' received');
   }
 
@@ -825,6 +853,7 @@ const app = (() => {
     for(const[id,p] of Object.entries(peers)) list.appendChild(_makePeerItem(id,p.name,p.color,p.emoji,false));
     const count=Object.keys(peers).length+1;
     const el=document.getElementById('online-count'); if(el) el.textContent=count;
+    if(currentMode==='beam') _renderBeamPeers();
   }
   function _makePeerItem(id,name,color,emoji,isMe) {
     const item=document.createElement('div');
@@ -908,20 +937,33 @@ const app = (() => {
   }
 
   /* ─────────────── ROOM ─────────────── */
-  function joinRoom() {
+  function joinRoom(pinOverride) {
     const v1=document.getElementById('room-pin-input')?.value.trim();
     const v2=document.getElementById('dock-pin-input')?.value.trim();
-    const pin=(v1?.length===4?v1:null)||(v2?.length===4?v2:null);
+    const v3=document.getElementById('beam-pin-input')?.value.trim();
+    const pin=pinOverride||(v1?.length===4?v1:null)||(v2?.length===4?v2:null)||(v3?.length===4?v3:null);
     if(!pin||!/^\d{4}$/.test(pin)){toast('Enter a valid 4-digit PIN');return;}
-    if(pin===currentPin){toast('Already in this room');return;}
+    if(pin===currentPin){toast('Already in room '+pin);return;}
     if(mqttClient?.connected) mqttClient.unsubscribe(roomTopic());
     peers={}; for(const id in pcs) _closePc(id);
+    _clearChat();
     renderRoster(); _renderRadarPeers();
     currentPin=pin; localStorage.setItem('dhurta_pin',pin);
     _updatePinUI();
     if(mqttClient?.connected){mqttClient.subscribe(roomTopic(),{qos:0});broadcastPresence('DISCOVER_PING');}
     toast('Joined room '+pin);
-    document.querySelectorAll('#room-pin-input,#dock-pin-input').forEach(el=>el&&(el.value=''));
+    document.querySelectorAll('#room-pin-input,#dock-pin-input,#beam-pin-input').forEach(el=>el&&(el.value=''));
+  }
+
+  function _clearChat() {
+    const s=document.getElementById('chat-stream');
+    if(!s) return;
+    s.innerHTML=`<div class="chat-empty" id="chat-welcome">
+      <div class="empty-icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <h3>Start a conversation</h3>
+      <p>Join a room with a 4-digit PIN, or scan a QR code to connect with nearby devices.</p>
+    </div>`;
+    _msgDedup.clear();
   }
   function _updatePinUI() {
     const chip=document.getElementById('room-chip-pin'); if(chip) chip.textContent=currentPin;
@@ -939,11 +981,72 @@ const app = (() => {
   /* Mode switch */
   function setMode(mode) {
     currentMode=mode;
-    document.getElementById('panel-transfer')?.classList.toggle('hidden',mode!=='transfer');
-    document.getElementById('panel-chat')?.classList.toggle('hidden',mode!=='chat');
+    ['transfer','beam','chat'].forEach(m=>{
+      document.getElementById('panel-'+m)?.classList.toggle('hidden',mode!==m);
+    });
     document.querySelectorAll('.mode-pill-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
     if(mode==='transfer'){ if(_radar)_radar.start(); _renderRadarPeers(); }
     else { if(_radar)_radar.stop(); }
+    if(mode==='beam') _renderBeamPeers();
+  }
+
+  /* Beam peers bar */
+  function _renderBeamPeers() {
+    const bar=document.getElementById('beam-peers-bar'); if(!bar) return;
+    const hint=document.getElementById('beam-peer-hint');
+    const peerIds=Object.keys(peers);
+    // remove old chips, keep hint
+    bar.querySelectorAll('.beam-peer-chip').forEach(e=>e.remove());
+    if(!peerIds.length){ if(hint) hint.style.display=''; return; }
+    if(hint) hint.style.display='none';
+    peerIds.forEach(id=>{
+      const p=peers[id];
+      const chip=document.createElement('div'); chip.className='beam-peer-chip'+(id===selectedPeerId?' selected':'');
+      chip.dataset.peerId=id;
+      const cv=createAvatarCanvas(p.color||'#555',p.emoji||'👤',28);
+      const nm=document.createElement('span');nm.className='bpc-name';nm.textContent=p.name?.split(' ')[0]||id.slice(0,6);
+      const dot=document.createElement('div');dot.className='bpc-dot';
+      chip.appendChild(cv);chip.appendChild(nm);chip.appendChild(dot);
+      chip.onclick=()=>{
+        selectPeer(id);
+        bar.querySelectorAll('.beam-peer-chip').forEach(c=>c.classList.toggle('selected',c.dataset.peerId===id));
+      };
+      bar.appendChild(chip);
+    });
+  }
+
+  /* Beam progress */
+  function _updateBeamProgress(pct, speedBs) {
+    const CIRC=2*Math.PI*52;
+    const arc=document.getElementById('bpr-arc');
+    if(arc) arc.style.strokeDashoffset=((1-pct/100)*CIRC).toFixed(2);
+    const pp=document.getElementById('bpr-pct'); if(pp) pp.textContent=pct.toFixed(0)+'%';
+    const sp=document.getElementById('bpr-spd'); if(sp) sp.textContent=speedBs>0?formatBytes(speedBs)+'/s':'';
+    const ring=document.getElementById('beam-progress-ring');
+    const orb=document.getElementById('beam-send-orb');
+    if(pct>0&&pct<100){ ring&&(ring.style.display='flex'); orb&&(orb.style.display='none'); }
+    else { ring&&(ring.style.display='none'); orb&&(orb.style.display='flex'); }
+  }
+
+  /* Add file to beam grid */
+  function _addToBeamGrid(blob, meta) {
+    const grid=document.getElementById('beam-grid');
+    document.getElementById('br-empty')?.remove();
+    if(!grid) return;
+    const item=document.createElement('div');item.className='beam-grid-item';
+    if(meta.mimeType?.startsWith('image/')){
+      const img=document.createElement('img');img.src=URL.createObjectURL(blob);item.appendChild(img);
+    } else if(meta.mimeType?.startsWith('video/')){
+      const vid=document.createElement('video');vid.src=URL.createObjectURL(blob);vid.style.cssText='width:100%;height:100%;object-fit:cover;';item.appendChild(vid);
+    } else {
+      const ic=document.createElement('div');ic.className='bgi-icon';ic.innerHTML=fileIcon(meta.mimeType);item.appendChild(ic);
+    }
+    const nm=document.createElement('div');nm.className='bgi-name';nm.textContent=meta.name;item.appendChild(nm);
+    const dl=document.createElement('button');dl.className='bgi-dl';dl.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="3" x2="12" y2="21"/></svg>';
+    dl.onclick=e=>{e.stopPropagation();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=meta.name;a.click();};
+    item.appendChild(dl);
+    item.onclick=()=>{ if(meta.mimeType?.startsWith('image/')) openLightbox(URL.createObjectURL(blob)); else dl.click(); };
+    grid.prepend(item);
   }
 
   /* Chat tab switching (mobile) */
@@ -1022,13 +1125,7 @@ const app = (() => {
         _stopQRScan();
         setTimeout(() => {
           closeQR();
-          const inp = document.getElementById('dock-pin-input');
-          if (inp) inp.value = pin;
-          // manually trigger joinRoom with scanned PIN
-          const v1 = document.getElementById('room-pin-input');
-          const v2 = document.getElementById('dock-pin-input');
-          if(v1) v1.value = ''; if(v2) v2.value = pin;
-          joinRoom();
+          joinRoom(pin);
           toast('Joined room ' + pin + ' via QR scan');
         }, 600);
         return;
