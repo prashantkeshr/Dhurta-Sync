@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orb" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Radar rings (left side) -->
+  <g transform="translate(320,315)" opacity="0.18" stroke="#818cf8" fill="none">
+    <circle r="260" stroke-width="1"/>
+    <circle r="190" stroke-width="1"/>
+    <circle r="120" stroke-width="1"/>
+    <circle r="60" stroke-width="1"/>
+    <!-- sweep sector -->
+    <path d="M0,0 L0,-260 A260,260 0 0,1 200,-170 Z" fill="#818cf8" opacity="0.12"/>
+    <!-- cross -->
+    <line x1="-270" x2="270" y1="0" y2="0" stroke-width="0.5"/>
+    <line x1="0" x2="0" y1="-270" y2="270" stroke-width="0.5"/>
+  </g>
+
+  <!-- Radar glow -->
+  <circle cx="320" cy="315" r="200" fill="url(#glow)"/>
+
+  <!-- Center user orb -->
+  <circle cx="320" cy="315" r="38" fill="url(#orb)" opacity="0.9"/>
+  <text x="320" y="327" font-size="28" text-anchor="middle" dominant-baseline="middle">😎</text>
+
+  <!-- Peer orbs -->
+  <circle cx="460" cy="200" r="26" fill="#ec4899" opacity="0.85"/>
+  <text x="460" y="200" font-size="20" text-anchor="middle" dominant-baseline="middle">🦊</text>
+  <line x1="320" y1="315" x2="460" y2="200" stroke="#818cf8" stroke-width="1.5" opacity="0.5"/>
+
+  <circle cx="200" cy="200" r="26" fill="#22c55e" opacity="0.85"/>
+  <text x="200" y="200" font-size="20" text-anchor="middle" dominant-baseline="middle">🐼</text>
+  <line x1="320" y1="315" x2="200" y2="200" stroke="#818cf8" stroke-width="1.5" opacity="0.5"/>
+
+  <circle cx="170" cy="420" r="22" fill="#f97316" opacity="0.75"/>
+  <text x="170" y="420" font-size="17" text-anchor="middle" dominant-baseline="middle">🦁</text>
+
+  <!-- Right side — branding -->
+  <text x="680" y="220" font-family="Inter,Arial,sans-serif" font-size="72" font-weight="700" fill="white" letter-spacing="-2">Dhurta</text>
+  <text x="680" y="290" font-family="Inter,Arial,sans-serif" font-size="72" font-weight="300" fill="#818cf8" letter-spacing="-2">Sync</text>
+
+  <!-- Tagline -->
+  <text x="680" y="350" font-family="Inter,Arial,sans-serif" font-size="26" fill="#a1a1aa">Serverless P2P file sharing &amp; chat</text>
+  <text x="680" y="390" font-family="Inter,Arial,sans-serif" font-size="22" fill="#71717a">No accounts · No cloud · No limits</text>
+
+  <!-- Feature pills -->
+  <rect x="680" y="430" width="140" height="36" rx="18" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="750" y="453" font-family="Inter,Arial,sans-serif" font-size="15" fill="#a78bfa" text-anchor="middle">WebRTC P2P</text>
+
+  <rect x="836" y="430" width="120" height="36" rx="18" fill="#1e1b4b" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="896" y="453" font-family="Inter,Arial,sans-serif" font-size="15" fill="#c4b5fd" text-anchor="middle">QR Pairing</text>
+
+  <rect x="972" y="430" width="110" height="36" rx="18" fill="#1e1b4b" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="1027" y="453" font-family="Inter,Arial,sans-serif" font-size="15" fill="#f9a8d4" text-anchor="middle">AI-Powered</text>
+
+  <!-- URL -->
+  <text x="680" y="560" font-family="Inter,Arial,sans-serif" font-size="20" fill="#52525b">sync.dhurta.com</text>
+
+  <!-- Border accent -->
+  <rect x="1" y="1" width="1198" height="628" rx="0" fill="none" stroke="#27272a" stroke-width="2"/>
+</svg>

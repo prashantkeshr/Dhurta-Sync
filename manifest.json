@@ -1,16 +1,63 @@
 {
-  "name": "Dhurta Sync",
-  "short_name": "Dhurta",
-  "description": "Zero-backend P2P file sharing, calling & chat",
+  "name": "Dhurta Sync — P2P File Sharing & Chat",
+  "short_name": "Dhurta Sync",
+  "description": "Serverless peer-to-peer file sharing, encrypted chat, voice & video calls — no accounts, no cloud. Works on any device via QR code or 4-digit PIN.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#09090b",
   "theme_color": "#818cf8",
+  "lang": "en",
+  "categories": ["utilities", "productivity", "social"],
+  "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='38' fill='%23818cf8'/><text y='140' x='96' font-size='120' text-anchor='middle' fill='white'>⚡</text></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='38' fill='%23818cf8'/><path d='M96 28L52 100h36v64l56-72H108V28z' fill='white'/></svg>",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%23818cf8'/><path d='M256 72L138 264h96v176L370 264H274V72z' fill='white'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "label": "Transfer mode — radar showing nearby devices",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Send a File",
+      "short_name": "Send",
+      "description": "Open beam mode to send a file",
+      "url": "/?mode=beam",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><circle cx='48' cy='48' r='48' fill='%236366f1'/><path d='M48 20v36M35 43l13-13 13 13M30 70h36' stroke='white' stroke-width='6' stroke-linecap='round'/></svg>", "sizes": "96x96" }]
+    },
+    {
+      "name": "Start Chat",
+      "short_name": "Chat",
+      "description": "Open the encrypted chat room",
+      "url": "/?mode=chat",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><circle cx='48' cy='48' r='48' fill='%238b5cf6'/><path d='M20 58V32a4 4 0 014-4h48a4 4 0 014 4v26a4 4 0 01-4 4H42l-12 8v-8H24a4 4 0 01-4-4z' fill='white'/></svg>", "sizes": "96x96" }]
     }
   ]
 }

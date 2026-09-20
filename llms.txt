@@ -1,0 +1,42 @@
+# Dhurta Sync
+
+> Zero-backend P2P file sharing, chat, and device sync — no servers, no accounts, no cloud.
+
+## What it does
+
+Dhurta Sync is a web-based peer-to-peer application that lets any two devices share files,
+send messages, and make voice/video calls directly — without uploading anything to a server.
+It runs entirely in the browser via WebRTC DataChannels and an MQTT mesh for signalling.
+
+## Key capabilities
+
+- **Transfer mode** — AirDrop-style radar UI showing nearby peers on the same PIN room.
+  Drag-and-drop or tap-to-select files; binary chunks stream at full SCTP speed (~10 MB/s).
+- **Beam mode** — ShareMe / Xender-style send orb. Tap the glowing orb to pick a file,
+  watch the progress ring, and browse received media in a thumbnail grid.
+- **Chat mode** — WhatsApp-style encrypted messaging over MQTT + WebRTC DataChannel
+  with typing indicators, deduplication, and per-device colour avatars.
+- **AI Assistant** — In-browser Gemini Nano (window.ai) powers smart file summaries,
+  transfer tips, and a chat AI companion with no API key required.
+- **QR + PIN join** — Connect devices by scanning a QR code or typing a 4-digit PIN;
+  no Bluetooth, no NFC, no app install required.
+- **PWA** — Installable, works offline after first load, cache-first service worker.
+
+## Technology
+
+- WebRTC SCTP DataChannels for binary file streaming
+- MQTT over WebSocket (EMQX / HiveMQ / Mosquitto mesh) for signalling and chat
+- Reed-Solomon GF(256) QR code generator (pure JS, no lib)
+- jsQR (camera-based QR scanner)
+- Chrome built-in AI (window.ai / Prompt API) for local LLM features
+- Service Worker (cache dhurta-v4) for offline PWA
+
+## Intended use cases
+
+File sharing between phones and laptops on the same local network or globally via MQTT broker.
+No accounts, no file size limits, end-to-end transport encryption via WebRTC DTLS.
+
+## Source
+
+GitHub: https://github.com/prashantkeshr/Dhurta-Sync
+Live:   https://sync.dhurta.com

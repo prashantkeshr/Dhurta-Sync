@@ -607,6 +607,8 @@ const app = (() => {
     }
     if(!targets.length){toast('No peers connected. Ask them to join room '+currentPin);return;}
     for(const file of files){
+      AI.smartToast(file);
+      if(file.size > 10*1024*1024) AI.getTransferTip(file);
       const tId=uid();
       const meta={type:'FILE_META',transferId:tId,name:file.name,size:file.size,mimeType:file.type};
       _appendOutgoingFile(myId,meta,tId);
@@ -1215,15 +1217,101 @@ const app = (() => {
 
   document.addEventListener('DOMContentLoaded', init);
 
+  /* ─────────────── AI MODULE ─────────────── */
+  const AI = (() => {
+    let _session = null, _ready = false, _checking = false;
+
+    async function _init() {
+      if (_ready || _checking) return _ready;
+      _checking = true;
+      try {
+        // Chrome built-in AI (Prompt API / Gemini Nano)
+        if (window.ai?.languageModel) {
+          const cap = await window.ai.languageModel.capabilities();
+          if (cap.available !== 'no') {
+            _session = await window.ai.languageModel.create({
+              systemPrompt: 'You are a helpful assistant built into Dhurta Sync, a peer-to-peer file sharing app. Be concise. Help users with file transfers, device pairing, and general questions. Keep replies under 3 sentences unless more detail is clearly needed.',
+            });
+            _ready = true;
+          }
+        }
+      } catch {}
+      _checking = false;
+      return _ready;
+    }
+
+    async function ask(prompt) {
+      if (!await _init()) return null;
+      try { return await _session.prompt(prompt); } catch { return null; }
+    }
+
+    function analyzeFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      const size = file.size;
+      const mb = (size / 1048576).toFixed(1);
+      const eta = size / (10 * 1024 * 1024); // ~10 MB/s estimate
+      const etaStr = eta < 1 ? `${(eta*1000).toFixed(0)} ms` : `${eta.toFixed(1)} s`;
+      const categories = {
+        image: ['jpg','jpeg','png','gif','webp','svg','avif','heic'],
+        video: ['mp4','mkv','mov','avi','webm','m4v'],
+        audio: ['mp3','aac','flac','wav','ogg','m4a'],
+        doc:   ['pdf','docx','doc','pptx','xlsx','txt','md','csv'],
+        code:  ['js','ts','py','rs','go','java','cpp','c','html','css','json'],
+        archive:['zip','rar','7z','tar','gz'],
+      };
+      let cat = 'file';
+      for (const [k, exts] of Object.entries(categories)) {
+        if (exts.includes(ext)) { cat = k; break; }
+      }
+      const icons = {image:'🖼️',video:'🎬',audio:'🎵',doc:'📄',code:'💻',archive:'📦',file:'📁'};
+      return { mb, etaStr, cat, icon: icons[cat] || '📁', ext };
+    }
+
+    function smartToast(file) {
+      const { icon, mb, etaStr, cat } = analyzeFile(file);
+      toast(`${icon} Sending ${cat} · ${mb} MB · est. ${etaStr}`);
+    }
+
+    async function chatSuggest(userText) {
+      if (!userText.trim()) return;
+      const reply = await ask(userText);
+      if (!reply) return;
+      _appendMessage({ from: '__ai__', text: reply, mqttName: '✨ Dhurta AI', mqttColor: '#818cf8' });
+    }
+
+    async function getTransferTip(file) {
+      const { mb, cat } = analyzeFile(file);
+      const reply = await ask(`I'm sending a ${mb} MB ${cat} file called "${file.name}" via P2P WebRTC. Give me one short tip to make this transfer smoother.`);
+      if (reply) toast('💡 ' + reply.slice(0, 120));
+    }
+
+    return { ask, analyzeFile, smartToast, chatSuggest, getTransferTip, get ready() { return _ready; } };
+  })();
+
+  /* AI chat input hook — prefix message with "/" to trigger AI */
+  const _origSendMessage = sendMessage;
+  function sendMessageAI() {
+    const input = document.getElementById('msg-input');
+    const txt = input?.value?.trim() || '';
+    if (txt.startsWith('/ai ') || txt.startsWith('/ask ')) {
+      const q = txt.replace(/^\/(ai|ask)\s+/, '');
+      input.value = '';
+      AI.chatSuggest(q);
+    } else {
+      _origSendMessage();
+    }
+  }
+
   /* ─────────────── PUBLIC API ─────────────── */
   return {
-    sendMessage, sendFiles, syncClipboard,
+    sendMessage: sendMessageAI, sendFiles, syncClipboard,
     setMode, switchTab, joinRoom, selectPeer,
     openQR, closeQR, switchQRTab,
     openProfile, closeProfile, saveProfile,
     startCall, acceptCall, rejectCall, endCall,
     toggleMute, toggleCamera, toggleScreen,
     selfRepair, openLightbox, closeLightbox,
+    AI,
     _toast: toast,
   };
 

@@ -1,13 +1,161 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" prefix="og: https://ogp.me/ns#">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#09090b">
+
+<!-- ══ Primary SEO ══ -->
+<title>Dhurta Sync — Serverless P2P File Sharing, Chat & Calls</title>
+<meta name="description" content="Share files instantly between any devices with no servers, no accounts and no cloud. P2P transfer via WebRTC, encrypted chat, voice & video calls, QR code or 4-digit PIN pairing.">
+<meta name="keywords" content="p2p file sharing, serverless file transfer, webrtc file share, wifi file share, no cloud file sharing, peer to peer chat, local file transfer, airdrop alternative, shareit alternative, send files without internet, qr file share, dhurta sync">
+<meta name="author" content="Dhurta.com">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="googlebot" content="index, follow">
+<link rel="canonical" href="https://sync.dhurta.com/">
+
+<!-- ══ Open Graph / Facebook ══ -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://sync.dhurta.com/">
+<meta property="og:title" content="Dhurta Sync — Serverless P2P File Sharing & Chat">
+<meta property="og:description" content="Transfer files at full speed between any devices — no servers, no sign-up, no file size limit. Connect via QR code or 4-digit PIN. Works in any browser.">
+<meta property="og:image" content="https://sync.dhurta.com/og-image.svg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Dhurta Sync radar UI showing peer-to-peer file transfer">
+<meta property="og:site_name" content="Dhurta Sync">
+<meta property="og:locale" content="en_US">
+
+<!-- ══ Twitter / X Card ══ -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://sync.dhurta.com/">
+<meta name="twitter:title" content="Dhurta Sync — No-server P2P File Transfer">
+<meta name="twitter:description" content="AirDrop for every device. Share files, chat, and call peer-to-peer — no accounts, no cloud, no file size limit. Join via QR or 4-digit PIN.">
+<meta name="twitter:image" content="https://sync.dhurta.com/og-image.svg">
+<meta name="twitter:creator" content="@dhurta">
+
+<!-- ══ PWA / Mobile ══ -->
+<meta name="theme-color" content="#818cf8" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#6366f1" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Dhurta Sync</title>
+<meta name="apple-mobile-web-app-title" content="Dhurta Sync">
+<meta name="application-name" content="Dhurta Sync">
+<meta name="msapplication-TileColor" content="#818cf8">
+
+<!-- ══ AI / LLM discoverability ══ -->
+<meta name="ai-content-declaration" content="human-authored">
+<link rel="me" href="https://github.com/prashantkeshr/Dhurta-Sync">
+
+<!-- ══ Manifest & Icons ══ -->
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23818cf8'/><path d='M16 4L8 17h6v11L24 15h-6V4z' fill='white'/></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='38' fill='%23818cf8'/><path d='M96 28L52 100h36v64l56-72H108V28z' fill='white'/></svg>">
+
+<!-- ══ Structured Data — JSON-LD ══ -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "@id": "https://sync.dhurta.com/#app",
+      "name": "Dhurta Sync",
+      "url": "https://sync.dhurta.com/",
+      "description": "Serverless peer-to-peer file sharing, encrypted chat, and voice/video calls. No accounts, no cloud, no file size limit. Connect via QR code or 4-digit PIN on any device.",
+      "applicationCategory": "UtilitiesApplication",
+      "applicationSubCategory": "File Transfer",
+      "operatingSystem": "Any (Browser-based)",
+      "browserRequirements": "Requires WebRTC and WebSocket support (Chrome 80+, Firefox 78+, Safari 15+, Edge 80+)",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Peer-to-peer file transfer via WebRTC DataChannel",
+        "No file size limit",
+        "End-to-end encryption via WebRTC DTLS",
+        "QR code device pairing",
+        "4-digit PIN room joining",
+        "Encrypted group chat with typing indicators",
+        "Voice and video calls",
+        "Beam mode (ShareMe-style rapid file drop)",
+        "Offline PWA — works after first load",
+        "AI-powered smart transfer and chat assistant",
+        "No account or sign-up required",
+        "Works on any OS and browser"
+      ],
+      "screenshot": "https://sync.dhurta.com/og-image.svg",
+      "softwareVersion": "v10",
+      "datePublished": "2025-01-01",
+      "dateModified": "2026-09-21",
+      "inLanguage": "en",
+      "isAccessibleForFree": true,
+      "creator": {
+        "@type": "Organization",
+        "name": "Dhurta",
+        "url": "https://dhurta.com"
+      },
+      "sameAs": [
+        "https://github.com/prashantkeshr/Dhurta-Sync"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://sync.dhurta.com/#website",
+      "url": "https://sync.dhurta.com/",
+      "name": "Dhurta Sync",
+      "description": "Serverless P2P file sharing and chat",
+      "publisher": {
+        "@type": "Organization",
+        "name": "Dhurta",
+        "url": "https://dhurta.com"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://sync.dhurta.com/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does Dhurta Sync upload my files to a server?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Files transfer directly between devices via WebRTC DataChannels (peer-to-peer). Nothing is stored on any server."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there a file size limit?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No file size limit. Files stream as binary chunks directly between devices at full WebRTC speed (~10 MB/s or faster on local networks)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do two devices connect?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Scan the other device's QR code, or type the same 4-digit PIN on both devices. No Bluetooth or NFC required — works over any network."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work without internet?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Once installed as a PWA, the app shell loads offline. File transfers use WebRTC which can work on local networks without internet if a STUN/TURN server is not needed."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<!-- ══ Fonts & Styles ══ -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
