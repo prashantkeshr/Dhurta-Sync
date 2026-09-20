@@ -1,12 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
-        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xsi:schemaLocation="
+          http://www.sitemaps.org/schemas/sitemap/0.9
+          http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd
+          http://www.google.com/schemas/sitemap-image/1.1
+          http://www.google.com/schemas/sitemap-image/1.1/sitemap-image.xsd">
+
+  <!-- ── Main app ── -->
   <url>
     <loc>https://sync.dhurta.com/</loc>
     <lastmod>2026-09-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://sync.dhurta.com/og-image.svg</image:loc>
+      <image:title>Dhurta Sync — Serverless P2P File Sharing &amp; Chat</image:title>
+      <image:caption>Radar UI showing peer-to-peer file transfer between devices</image:caption>
+    </image:image>
   </url>
+
+  <!-- ── Transfer mode deep link ── -->
+  <url>
+    <loc>https://sync.dhurta.com/?mode=transfer</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- ── Beam mode deep link ── -->
+  <url>
+    <loc>https://sync.dhurta.com/?mode=beam</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- ── Chat mode deep link ── -->
+  <url>
+    <loc>https://sync.dhurta.com/?mode=chat</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- ── Supporting files ── -->
+  <url>
+    <loc>https://sync.dhurta.com/llms.txt</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
 </urlset>
