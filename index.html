@@ -217,6 +217,14 @@
       </svg>
       <span id="room-chip-pin">----</span>
     </button>
+    <!-- Network quality -->
+    <span id="net-quality" class="net-quality" onclick="app._toast('Network quality indicator')" title="Network quality" style="display:none"></span>
+    <!-- Theme toggle -->
+    <button class="nav-icon-btn" onclick="app.toggleTheme()" title="Toggle theme">🌓</button>
+    <!-- Nearby devices -->
+    <button class="nav-icon-btn" onclick="document.getElementById('ble-modal').classList.remove('hidden')" title="Nearby devices">📡</button>
+    <!-- History -->
+    <button class="nav-icon-btn" onclick="app.openHistory()" title="Transfer history">🗂️</button>
     <!-- Profile avatar -->
     <button class="nav-avatar-btn" onclick="app.openProfile()" title="Edit profile">
       <canvas id="my-avatar" width="32" height="32"></canvas>
@@ -695,6 +703,145 @@
 
 <!-- Toast layer -->
 <div class="toast-layer" id="toast-layer"></div>
+
+<!-- ══════════════════════════════════════════════════
+     GLOBAL CALL OVERLAY (WhatsApp-style, all screens)
+══════════════════════════════════════════════════ -->
+<div id="call-overlay" class="call-overlay hidden" role="dialog" aria-label="Active call">
+  <div id="call-overlay-bg" class="co-bg"></div>
+
+  <!-- Minimized floating bar -->
+  <div class="co-mini" id="co-mini">
+    <canvas id="call-mini-av" width="32" height="32"></canvas>
+    <span class="co-mini-name" id="co-mini-name">Call</span>
+    <span class="co-mini-timer" id="call-mini-time">0:00</span>
+    <div class="co-mini-actions">
+      <button class="co-mini-btn" onclick="app.toggleMute()" title="Mute">🎤</button>
+      <button class="co-mini-end" onclick="app.endCall()">✕</button>
+      <button class="co-mini-expand" onclick="app.minimizeCall()" title="Expand">⬆</button>
+    </div>
+  </div>
+
+  <!-- Full call window -->
+  <div class="co-full" id="co-full">
+    <!-- Video area -->
+    <div class="co-video-area">
+      <video id="call-vid-remote" class="co-vid-main" autoplay playsinline></video>
+      <video id="call-vid-local"  class="co-vid-pip"  autoplay playsinline muted></video>
+    </div>
+
+    <!-- Peer info (shown when no video) -->
+    <div class="co-peer-info" id="co-peer-info">
+      <div id="call-overlay-avatar" class="co-av"></div>
+      <div class="co-peer-name" id="call-overlay-name">Connecting…</div>
+      <div class="co-status" id="call-overlay-status">Calling…</div>
+      <div class="co-timer" id="call-overlay-timer" style="display:none">0:00</div>
+    </div>
+
+    <!-- Controls bar -->
+    <div class="co-controls">
+      <button class="cc-btn" id="cc-mute" onclick="app.toggleMute()" title="Mute">
+        <span id="cc-mute-ic">🎤</span>
+        <label>Mute</label>
+      </button>
+      <button class="cc-btn cc-screen" onclick="app.toggleScreen()" title="Screen">
+        <span>🖥️</span><label>Screen</label>
+      </button>
+      <button class="cc-btn cc-end" onclick="app.endCall()">
+        <span>📵</span><label>End</label>
+      </button>
+      <button class="cc-btn" id="cc-cam" onclick="app.toggleCamera()" title="Camera">
+        <span>📷</span><label>Camera</label>
+      </button>
+      <button class="cc-btn" onclick="app.toggleCallBg()" title="Background">
+        <span>🌄</span><label>BG</label>
+      </button>
+      <button class="cc-btn cc-minimize" onclick="app.minimizeCall()" title="Minimize">
+        <span>⬇</span><label>Shrink</label>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     INCOMING CALL POPUP (fullscreen, over everything)
+══════════════════════════════════════════════════ -->
+<div id="incoming-overlay" class="incoming-overlay hidden" role="alertdialog" aria-label="Incoming call">
+  <div class="inc-card">
+    <div class="inc-wave"></div>
+    <div class="inc-wave inc-wave2"></div>
+    <div class="inc-wave inc-wave3"></div>
+    <div id="inc-ov-avatar" class="inc-avatar"></div>
+    <div class="inc-name" id="inc-ov-name">Unknown</div>
+    <div class="inc-type" id="inc-ov-type">📞 Voice Call</div>
+    <div class="inc-subtitle">Incoming call via Dhurta Sync</div>
+    <div class="inc-actions">
+      <button class="ia-reject" onclick="app.rejectCall()">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.88 9.2a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.99.5h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91"/>
+          <line x1="23" y1="1" x2="1" y2="23"/>
+        </svg>
+        <span>Decline</span>
+      </button>
+      <button class="ia-accept" onclick="app.acceptCall()">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.13 19.13 0 0 1 4.92 13 19.79 19.79 0 0 1 1.85 4.36 2 2 0 0 1 3.81 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+        <span>Answer</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     BLE NEARBY DEVICES PANEL
+══════════════════════════════════════════════════ -->
+<div id="ble-modal" class="modal-back hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal-sheet">
+    <div class="sheet-head">
+      <h3>📡 Nearby Devices</h3>
+      <button class="sheet-x" onclick="document.getElementById('ble-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="ble-desc">Dhurta users in your room appear automatically. Scan to find other Bluetooth devices and invite them.</p>
+      <button id="ble-scan-btn" class="ble-scan-btn" onclick="app.scanBLE()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M2 12a10 10 0 1 1 20 0"/>
+        </svg>
+        Scan Bluetooth
+      </button>
+      <div id="ble-device-list" class="ble-device-list">
+        <p class="ble-empty">Tap "Scan Bluetooth" to find nearby devices</p>
+      </div>
+      <div class="ble-dhurta-section">
+        <div class="sh-title" style="margin-bottom:8px">Dhurta Sync Users (same room)</div>
+        <div id="peer-list-ble" class="peer-list"></div>
+      </div>
+      <button id="nfc-pair-btn" class="ble-scan-btn hidden" onclick="app.nfcPair()" style="margin-top:8px;background:rgba(6,182,212,.15);color:#06b6d4;border-color:#06b6d4">
+        📡 Pair via NFC
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     QUICK ACTIONS FAB (mobile)
+══════════════════════════════════════════════════ -->
+<div class="quick-fab" id="quick-fab">
+  <button class="fab-main" id="fab-main-btn" onclick="document.getElementById('quick-fab').classList.toggle('open')">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  </button>
+  <div class="fab-menu">
+    <button class="fab-item" onclick="app.shareScreenshot()" title="Screenshot">📸</button>
+    <button class="fab-item" onclick="app.syncClipboard()" title="Clipboard">📋</button>
+    <button class="fab-item" onclick="document.getElementById('ble-modal').classList.remove('hidden')" title="Nearby">📡</button>
+    <button class="fab-item" onclick="app.openHistory()" title="History">🗂️</button>
+    <button class="fab-item" onclick="app.toggleTheme()" title="Theme">🌓</button>
+    <button class="fab-item" onclick="app.nfcPair()" title="NFC">📱</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>

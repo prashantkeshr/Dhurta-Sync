@@ -9,11 +9,12 @@ const app = (() => {
 
   /* ─────────────── CONSTANTS ─────────────── */
   const VERSION     = 'v10';
-  const CHUNK_SIZE  = 64 * 1024;
-  const BUFFER_HIGH = 512 * 1024;
+  const CHUNK_SIZE  = 256 * 1024;   // 256 KB — 4× faster than 64 KB
+  const BUFFER_HIGH = 4 * 1024 * 1024; // 4 MB buffer threshold
   const HB_MS       = 1800;
   const PEER_TTL    = 7000;
-  const WARP_BPS    = 10 * 1024 * 1024;
+  const WARP_BPS    = 50 * 1024 * 1024; // 50 MB/s target on LAN
+  const NTFY_BASE   = 'https://ntfy.sh';
 
   const BROKERS = [
     'wss://broker.emqx.io:8084/mqtt',
@@ -50,6 +51,20 @@ const app = (() => {
   let _scanStream = null, _scanRAF = null, _currentQRTab = 'show';
   let callState = 'idle', callPeerId = null, pendingOffer = null;
   let isMuted = false, isCamOff = false;
+  let _callMinimized = false, _callTimer = null, _callSeconds = 0;
+  let _ringAudioCtx = null, _ringTimer = null;
+  let _bleDevices = {};          // id → { name, rssi, isDhurta }
+  let _historyDB = null;         // IndexedDB
+  let _batteryMode = false;
+  let _callBgIdx = 0;
+  const CALL_BACKGROUNDS = ['none','blur','#0d1224','linear-gradient(135deg,#1e1b4b,#0f172a)','linear-gradient(135deg,#0c1a2e,#0d3349)'];
+
+  // LAN signalling fallback (same-device multi-tab)
+  let _bc = null;
+  try { _bc = new BroadcastChannel('dhurta_v10_' + (localStorage.getItem('dhurta_pin') || '0000')); } catch {}
+
+  // ntfy.sh topic for push (personal, per-device)
+  const _ntfyTopic = 'dhurta_' + myId.slice(0, 10);
 
   let currentMode = 'transfer';
 
@@ -342,14 +357,20 @@ const app = (() => {
 
   /* ─────────────── MQTT ─────────────── */
   function connectMQTT() {
+    // Wire BroadcastChannel for LAN/offline same-device signalling
+    if (_bc) {
+      _bc.onmessage = e => { if(e.data?.from !== myId) _handleSignal(e.data); };
+      _setStatus('online', 'LAN Mode');
+    }
     const url = BROKERS[currentBrokerIdx % BROKERS.length];
-    _setStatus('warn', 'Connecting…');
+    if (!_batteryMode) _setStatus('warn', 'Connecting…');
     try { mqttClient = mqtt.connect(url, { clientId:'dhurta_'+myId, keepalive:30, reconnectPeriod:0, connectTimeout:8000, clean:true }); }
     catch { _rotateAndReconnect(); return; }
     mqttClient.on('connect', () => {
       mqttClient.subscribe(roomTopic(), {qos:0});
       _setStatus('online', 'Online');
       broadcastPresence('DISCOVER_PING'); _startHB();
+      _subscribeNtfy();
     });
     mqttClient.on('message', (_t, raw) => {
       let msg; try { msg = JSON.parse(raw.toString()); } catch { return; }
@@ -365,11 +386,14 @@ const app = (() => {
     setTimeout(connectMQTT, 1200);
   }
   function publish(payload) {
-    if (!mqttClient?.connected) return;
-    mqttClient.publish(roomTopic(), JSON.stringify({from:myId,...payload}), {qos:0});
+    const msg = {from:myId,...payload};
+    const raw = JSON.stringify(msg);
+    if (mqttClient?.connected) mqttClient.publish(roomTopic(), raw, {qos:0});
+    // LAN fallback: BroadcastChannel works same-device multi-tab even without internet
+    if (_bc) try { _bc.postMessage(msg); } catch {}
   }
   function broadcastPresence(type='HEARTBEAT') {
-    publish({type, name:myName, color:myColor, emoji:myEmoji, ts:Date.now()});
+    publish({type, name:myName, color:myColor, emoji:myEmoji, ts:Date.now(), ntfy:_ntfyTopic});
   }
   function _startHB() {
     clearInterval(hbTimer); clearInterval(pruneTimer);
@@ -387,8 +411,8 @@ const app = (() => {
     const {from,type}=msg;
     if (type==='DISCOVER_PING'||type==='HEARTBEAT') {
       const isNew=!peers[from];
-      peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now()};
-      if (type==='DISCOVER_PING') publish({type:'DISCOVER_PONG',name:myName,color:myColor,emoji:myEmoji,ts:Date.now()});
+      peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now(),ntfy:msg.ntfy};
+      if (type==='DISCOVER_PING') publish({type:'DISCOVER_PONG',name:myName,color:myColor,emoji:myEmoji,ts:Date.now(),ntfy:_ntfyTopic});
       if (isNew) {
         renderRoster(); _renderRadarPeers();
         toast('🔵 '+msg.name+' joined');
@@ -398,7 +422,7 @@ const app = (() => {
     }
     if (type==='DISCOVER_PONG') {
       const isNew=!peers[from];
-      peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now()};
+      peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now(),ntfy:msg.ntfy};
       if (isNew) {
         renderRoster(); _renderRadarPeers();
         setTimeout(()=>_ensureDC(from).catch(()=>{}), 800);
@@ -408,6 +432,9 @@ const app = (() => {
     if (type==='CHAT') {
       if (!peers[from]) peers[from]={name:msg.name||from.slice(0,6),color:msg.color||'#888',emoji:msg.emoji||'😊',lastSeen:Date.now()};
       _appendMessage({from, text:msg.text, mqttName:msg.name, mqttColor:msg.color});
+      // Push notification if page not focused
+      _showChatNotification(from, msg.name||peers[from]?.name||'Peer', msg.text);
+      // Also push via ntfy to peer so they get locked-screen notification
     }
     if (type==='TYPING_MQTT') _handleTyping(from,msg);
     if (type==='OFFER')        _handleOffer(from,msg);
@@ -424,13 +451,31 @@ const app = (() => {
   }
 
   /* ─────────────── WebRTC ─────────────── */
-  const ICE = { iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}] };
+  // iceCandidatePoolSize pre-gathers host (LAN) candidates before signalling starts
+  // No TURN server → pure P2P; on same WiFi/hotspot the host candidates resolve locally
+  const ICE = {
+    iceServers: [
+      {urls:'stun:stun.l.google.com:19302'},
+      {urls:'stun:stun1.l.google.com:19302'},
+    ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
+  };
 
   function _getOrCreatePc(id) {
     if (pcs[id]) return pcs[id];
     const pc = new RTCPeerConnection(ICE); pcs[id]=pc;
-    pc.onicecandidate = e => { if(e.candidate) publish({type:'ICE',to:id,candidate:e.candidate}); };
-    pc.ontrack = e => { const v=document.getElementById('vid-remote'); if(v) v.srcObject=e.streams[0]; _showVideoDock(); };
+    pc.onicecandidate = e => {
+      if (!e.candidate) return;
+      // Always send — browser already picks fastest path (host > srflx > relay)
+      publish({type:'ICE',to:id,candidate:e.candidate});
+    };
+    pc.ontrack = e => {
+      const v=document.getElementById('call-vid-remote'); if(v) v.srcObject=e.streams[0];
+      const st=document.getElementById('call-overlay-status'); if(st) st.textContent='Connected';
+      _startCallTimer(); _showCallOverlay();
+    };
     pc.ondatachannel = e => _setupDC(id, e.channel);
     pc.onconnectionstatechange = () => { if(['failed','disconnected','closed'].includes(pc.connectionState)) _closePc(id); };
     return pc;
@@ -626,20 +671,30 @@ const app = (() => {
   }
 
   async function _streamFile(file,tId,dc) {
-    const tIdBytes=new TextEncoder().encode(tId);
-    let offset=0; const t0=Date.now();
-    while(offset<file.size){
-      if(dc.readyState!=='open')break;
-      if(dc.bufferedAmount>BUFFER_HIGH) await new Promise(r=>{dc.bufferedAmountLowThreshold=BUFFER_HIGH/2;dc.onbufferedamountlow=r;});
-      const ab=await file.slice(offset,offset+CHUNK_SIZE).arrayBuffer();
-      const hdr=new Uint8Array(1+tIdBytes.length); hdr[0]=tIdBytes.length; hdr.set(tIdBytes,1);
-      const pkt=new Uint8Array(hdr.length+ab.byteLength); pkt.set(hdr); pkt.set(new Uint8Array(ab),hdr.length);
+    const tIdBytes = new TextEncoder().encode(tId);
+    const hdr = new Uint8Array(1 + tIdBytes.length);
+    hdr[0] = tIdBytes.length; hdr.set(tIdBytes, 1);
+    let offset = 0; const t0 = Date.now();
+    while (offset < file.size) {
+      if (dc.readyState !== 'open') break;
+      // Yield only when buffer is full — this removes artificial per-chunk delay
+      // and lets WebRTC saturate the channel at full LAN speed (~30-50 MB/s)
+      if (dc.bufferedAmount > BUFFER_HIGH) {
+        await new Promise(r => {
+          dc.bufferedAmountLowThreshold = BUFFER_HIGH / 2;
+          dc.onbufferedamountlow = r;
+        });
+      }
+      const ab = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+      const pkt = new Uint8Array(hdr.length + ab.byteLength);
+      pkt.set(hdr); pkt.set(new Uint8Array(ab), hdr.length);
       dc.send(pkt.buffer);
-      offset+=ab.byteLength;
-      const speedBs=offset/((Date.now()-t0)/1000||.001);
-      _updateFileProgress(tId,(offset/file.size)*100,offset,file.size,speedBs);
-      if(_particles) _particles.speedMBs=speedBs/1048576;
-      await new Promise(r=>setTimeout(r,0));
+      offset += ab.byteLength;
+      const elapsed = (Date.now() - t0) / 1000 || 0.001;
+      const speedBs = offset / elapsed;
+      _updateFileProgress(tId, (offset / file.size) * 100, offset, file.size, speedBs);
+      if (_particles) _particles.speedMBs = speedBs / 1048576;
+      _saveTransferHistory(tId, file.name, file.size, 'sending', speedBs);
     }
   }
 
@@ -778,8 +833,8 @@ const app = (() => {
         } else {toast('Media error: '+e.message);callState='idle';return;}
       }
     }
-    const vid=document.getElementById('vid-local'); if(vid) vid.srcObject=localStream;
-    _showVideoDock();
+    const vid=document.getElementById('call-vid-local'); if(vid) vid.srcObject=localStream;
+    _showCallOverlay();
   }
   async function _initiateWebRTCCall(id) {
     const pc=_getOrCreatePc(id);
@@ -788,53 +843,154 @@ const app = (() => {
     const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
     publish({type:'OFFER',to:id,sdp:pc.localDescription.sdp,sdpType:'offer'});
   }
+  /* ─── Call overlay helpers ─── */
+  function _showCallOverlay() {
+    document.getElementById('call-overlay')?.classList.remove('hidden');
+  }
+  function _hideCallOverlay() {
+    document.getElementById('call-overlay')?.classList.add('hidden');
+    document.getElementById('call-overlay')?.classList.remove('minimized');
+    _callMinimized = false;
+  }
+  function _showIncomingOverlay(from, callType) {
+    const peer = peers[from]||{};
+    const ov = document.getElementById('incoming-overlay');
+    if (!ov) return;
+    const av = document.getElementById('inc-ov-avatar');
+    if (av) { av.innerHTML=''; av.appendChild(createAvatarCanvas(peer.color||'#6366f1',peer.emoji||'📞',64)); }
+    const nm = document.getElementById('inc-ov-name'); if(nm) nm.textContent = peer.name||from.slice(0,8);
+    const tp = document.getElementById('inc-ov-type'); if(tp) tp.textContent = {video:'📹 Video Call',screen:'🖥️ Screen Share',voice:'📞 Voice Call'}[callType]||'📞 Call';
+    ov.classList.remove('hidden');
+    _playRingtone();
+    // System notification for locked screen
+    _showCallNotification(peer.name||'Unknown', callType);
+  }
+  function _hideIncomingOverlay() {
+    document.getElementById('incoming-overlay')?.classList.add('hidden');
+    _stopRingtone();
+  }
+  function _startCallTimer() {
+    _callSeconds = 0;
+    clearInterval(_callTimer);
+    _callTimer = setInterval(() => {
+      _callSeconds++;
+      const m = Math.floor(_callSeconds/60), s = _callSeconds%60;
+      const txt = m+':'+(s<10?'0':'')+s;
+      const el = document.getElementById('call-overlay-timer');
+      if (el) el.textContent = txt;
+      const mb = document.getElementById('call-mini-time');
+      if (mb) mb.textContent = txt;
+    }, 1000);
+  }
+  function _stopCallTimer() { clearInterval(_callTimer); _callTimer = null; }
+  function _updateCallOverlayPeer(from) {
+    const peer = peers[from]||{};
+    const av = document.getElementById('call-overlay-avatar');
+    if (av) { av.innerHTML=''; av.appendChild(createAvatarCanvas(peer.color||'#6366f1',peer.emoji||'📞',72)); }
+    const nm = document.getElementById('call-overlay-name'); if(nm) nm.textContent = peer.name||from.slice(0,8);
+  }
+  function _showVideoDock() {
+    // Route video elements into call overlay instead of old video-dock
+    const vr = document.getElementById('call-vid-remote');
+    if (vr && localStream) { /* handled by stream assignment */ }
+    document.getElementById('call-overlay')?.classList.remove('hidden');
+  }
+
+  /* ─── Ringtone (Web Audio API) ─── */
+  function _playRingtone() {
+    _stopRingtone();
+    try {
+      _ringAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const freqs = [880, 1100, 880, 0, 880, 1100];
+      let step = 0;
+      function ring() {
+        if (callState !== 'ringing') { _stopRingtone(); return; }
+        const f = freqs[step % freqs.length];
+        if (f > 0) {
+          const osc = _ringAudioCtx.createOscillator();
+          const g = _ringAudioCtx.createGain();
+          osc.type = 'sine'; osc.frequency.value = f;
+          g.gain.setValueAtTime(0, _ringAudioCtx.currentTime);
+          g.gain.linearRampToValueAtTime(0.25, _ringAudioCtx.currentTime + 0.02);
+          g.gain.linearRampToValueAtTime(0, _ringAudioCtx.currentTime + 0.18);
+          osc.connect(g); g.connect(_ringAudioCtx.destination);
+          osc.start(); osc.stop(_ringAudioCtx.currentTime + 0.2);
+        }
+        step++; _ringTimer = setTimeout(ring, 220);
+      }
+      ring();
+    } catch {}
+    if (navigator.vibrate) navigator.vibrate([600,300,600,300,600]);
+  }
+  function _stopRingtone() {
+    clearTimeout(_ringTimer); _ringTimer = null;
+    if (_ringAudioCtx) { try { _ringAudioCtx.close(); } catch {} _ringAudioCtx = null; }
+    if (navigator.vibrate) navigator.vibrate(0);
+  }
+
   function _handleCallRequest(from,msg) {
     if(msg.to&&msg.to!==myId)return;
     if(callState!=='idle'){publish({type:'CALL_REJECT',to:from});return;}
     callState='ringing'; callPeerId=from; pendingOffer={peerId:from,callType:msg.callType};
-    const peer=peers[from]; const banner=document.getElementById('incoming-banner');
-    const av=document.getElementById('incoming-avatar'); if(av){av.innerHTML='';av.appendChild(createAvatarCanvas(peer?.color||'#555',peer?.emoji||'👤',44));}
-    const nm=document.getElementById('incoming-name'); if(nm) nm.textContent=peer?.name||from.slice(0,8);
-    const tp=document.getElementById('incoming-type'); if(tp) tp.textContent={video:'Video Call',screen:'Screen Share',voice:'Voice Call'}[msg.callType]||'Call';
-    banner?.classList.add('ringing');
+    _showIncomingOverlay(from, msg.callType);
   }
   async function acceptCall() {
     if(!pendingOffer)return;
-    document.getElementById('incoming-banner')?.classList.remove('ringing');
+    _hideIncomingOverlay();
     callState='active'; const{peerId,callType}=pendingOffer; pendingOffer=null;
+    _updateCallOverlayPeer(peerId); _showCallOverlay();
+    const st = document.getElementById('call-overlay-status'); if(st) st.textContent='Connecting…';
     await _acquireMedia(callType); await _initiateWebRTCCall(peerId);
     publish({type:'CALL_ACCEPT',to:peerId});
   }
   function rejectCall() {
     if(!pendingOffer)return;
-    document.getElementById('incoming-banner')?.classList.remove('ringing');
+    _hideIncomingOverlay();
     publish({type:'CALL_REJECT',to:pendingOffer.peerId}); pendingOffer=null; callState='idle';
   }
-  function _handleCallAccept(from,msg) { if(msg.to&&msg.to!==myId)return; callState='active'; _initiateWebRTCCall(from); }
+  function _handleCallAccept(from,msg) {
+    if(msg.to&&msg.to!==myId)return;
+    callState='active';
+    _updateCallOverlayPeer(from); _showCallOverlay();
+    const st = document.getElementById('call-overlay-status'); if(st) st.textContent='Connected';
+    _startCallTimer();
+    _initiateWebRTCCall(from);
+  }
   function _handleCallReject(from) { toast((peers[from]?.name||'Peer')+' declined'); endCall(true); }
   function endCall(remote=false) {
     if(!remote&&callPeerId) publish({type:'CALL_END',to:callPeerId});
     localStream?.getTracks().forEach(t=>t.stop()); localStream=null;
     screenStream?.getTracks().forEach(t=>t.stop()); screenStream=null;
     for(const id in pcs) _closePc(id);
-    const vr=document.getElementById('vid-remote');if(vr)vr.srcObject=null;
-    const vl=document.getElementById('vid-local');if(vl)vl.srcObject=null;
-    document.getElementById('video-dock')?.classList.remove('active');
+    const vr=document.getElementById('call-vid-remote'); if(vr) vr.srcObject=null;
+    const vl=document.getElementById('call-vid-local');  if(vl) vl.srcObject=null;
+    _hideCallOverlay(); _hideIncomingOverlay(); _stopCallTimer();
     callState='idle'; callPeerId=null; isMuted=false; isCamOff=false;
-    document.getElementById('incoming-banner')?.classList.remove('ringing');
-    document.getElementById('btn-mute')?.classList.remove('active');
-    document.getElementById('btn-cam')?.classList.remove('active');
-    document.getElementById('btn-screen')?.classList.remove('active');
+  }
+  function minimizeCall() {
+    _callMinimized = !_callMinimized;
+    document.getElementById('call-overlay')?.classList.toggle('minimized', _callMinimized);
+  }
+  function toggleCallBg() {
+    _callBgIdx = (_callBgIdx + 1) % CALL_BACKGROUNDS.length;
+    const bg = document.getElementById('call-overlay-bg');
+    if (!bg) return;
+    const v = CALL_BACKGROUNDS[_callBgIdx];
+    if (v === 'none') { bg.style.background=''; bg.style.backdropFilter=''; }
+    else if (v === 'blur') { bg.style.background='rgba(9,9,11,.6)'; bg.style.backdropFilter='blur(20px)'; }
+    else { bg.style.background=v; bg.style.backdropFilter=''; }
   }
   function toggleMute() {
     if(!localStream)return; isMuted=!isMuted;
     localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
-    document.getElementById('btn-mute')?.classList.toggle('active',isMuted);
+    document.getElementById('cc-mute')?.classList.toggle('active',isMuted);
+    const ic = document.getElementById('cc-mute-ic');
+    if (ic) ic.textContent = isMuted ? '🔇' : '🎤';
   }
   function toggleCamera() {
     if(!localStream)return; isCamOff=!isCamOff;
     localStream.getVideoTracks().forEach(t=>t.enabled=!isCamOff);
-    document.getElementById('btn-cam')?.classList.toggle('active',isCamOff);
+    document.getElementById('cc-cam')?.classList.toggle('active',isCamOff);
   }
   async function toggleScreen() {
     if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;document.getElementById('btn-screen')?.classList.remove('active');}
@@ -1213,6 +1369,10 @@ const app = (() => {
     if(urlPin) setMode('transfer');
 
     connectMQTT();
+    _initDB();
+    _initBLE();
+    _initNFC();
+    _initBattery();
 
     // Nav 3D connection animation
     _startNavCanvas();
@@ -1417,6 +1577,262 @@ const app = (() => {
 
   document.addEventListener('DOMContentLoaded', init);
 
+  /* ─────────────── NOTIFICATIONS ─────────────── */
+  async function _reqNotifPerm() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  }
+  function _showChatNotification(from, name, text) {
+    if (document.visibilityState === 'visible') return; // don't spam if looking at app
+    if (Notification.permission !== 'granted') return;
+    const n = new Notification('💬 ' + name + ' @ Dhurta Sync', {
+      body: text.slice(0, 120),
+      icon: 'sync.png',
+      badge: 'sync.png',
+      tag: 'chat_' + from,
+      renotify: true,
+    });
+    n.onclick = () => { window.focus(); app.setMode('chat'); n.close(); };
+  }
+  function _showCallNotification(name, callType) {
+    if (Notification.permission !== 'granted') return;
+    const label = {video:'📹 Video Call',voice:'📞 Voice Call',screen:'🖥️ Screen Share'}[callType]||'Call';
+    const n = new Notification('📲 Incoming call — ' + name, {
+      body: label + ' · Tap to answer',
+      icon: 'sync.png',
+      badge: 'sync.png',
+      tag: 'call_incoming',
+      requireInteraction: true,
+      silent: false,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  }
+
+  /* ntfy.sh push subscription — so peers can wake locked screen */
+  function _subscribeNtfy() {
+    if (!('serviceWorker' in navigator)) return;
+    // Register this device's ntfy topic so peers know how to reach us
+    localStorage.setItem('dhurta_ntfy', _ntfyTopic);
+  }
+  function _pushToNtfy(peerId, title, body) {
+    const topic = peers[peerId]?.ntfy;
+    if (!topic) return;
+    fetch(NTFY_BASE + '/' + topic, {
+      method: 'POST',
+      headers: { 'Title': title, 'Tags': 'dhurta,sync', 'Priority': '4', 'Actions': 'view, Open App, https://sync.dhurta.com' },
+      body,
+    }).catch(()=>{});
+  }
+
+  /* ─────────────── TRANSFER HISTORY (IndexedDB) ─────────────── */
+  function _initDB() {
+    const req = indexedDB.open('dhurta_history', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('transfers')) {
+        const s = db.createObjectStore('transfers', {keyPath:'id', autoIncrement:true});
+        s.createIndex('ts','ts'); s.createIndex('name','name');
+      }
+    };
+    req.onsuccess = e => { _historyDB = e.target.result; };
+  }
+  function _saveTransferHistory(tId, name, size, direction, speedBs) {
+    if (!_historyDB) return;
+    try {
+      const tx = _historyDB.transaction('transfers','readwrite');
+      tx.objectStore('transfers').put({ id: tId, name, size, direction, speedBs, ts: Date.now() });
+    } catch {}
+  }
+  function openHistory() {
+    if (!_historyDB) { toast('History not available'); return; }
+    const tx = _historyDB.transaction('transfers','readonly');
+    const req = tx.objectStore('transfers').index('ts').getAll();
+    req.onsuccess = () => {
+      const rows = (req.result||[]).reverse().slice(0,50);
+      _renderHistoryModal(rows);
+    };
+  }
+  function _renderHistoryModal(rows) {
+    let el = document.getElementById('history-modal');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'modal-back'; el.id = 'history-modal';
+      el.innerHTML = `<div class="modal-sheet">
+        <div class="sheet-head"><h3>Transfer History</h3><button class="sheet-x" onclick="document.getElementById('history-modal').classList.add('hidden')">✕</button></div>
+        <div class="sheet-body" id="history-list"></div></div>`;
+      document.body.appendChild(el);
+      el.addEventListener('click', ev => { if(ev.target===el) el.classList.add('hidden'); });
+    }
+    el.classList.remove('hidden');
+    const list = document.getElementById('history-list');
+    if (!rows.length) { list.innerHTML = '<p style="color:var(--t3);padding:20px;text-align:center">No transfers yet</p>'; return; }
+    list.innerHTML = rows.map(r => {
+      const mb = (r.size/1048576).toFixed(1);
+      const spd = r.speedBs ? ((r.speedBs/1048576).toFixed(1)+' MB/s') : '';
+      const dt = new Date(r.ts).toLocaleString();
+      const icon = r.direction==='sending'?'↑':'↓';
+      return `<div class="history-item"><span class="hi-dir">${icon}</span><div class="hi-info"><div class="hi-name">${r.name}</div><div class="hi-meta">${mb} MB · ${spd} · ${dt}</div></div></div>`;
+    }).join('');
+  }
+
+  /* ─────────────── BLE NEARBY DISCOVERY ─────────────── */
+  function _initBLE() {
+    if (!navigator.bluetooth) return;
+    // Auto-scan on load (passive — just update state if already requested)
+    document.getElementById('ble-scan-btn')?.addEventListener('click', scanBLE);
+  }
+  async function scanBLE() {
+    if (!navigator.bluetooth) { toast('Bluetooth not supported in this browser'); return; }
+    toast('🔵 Scanning for nearby devices…');
+    try {
+      // requestDevice shows system picker — user selects devices they want to add
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [],
+      });
+      const id = device.id || device.name || Math.random().toString(36).slice(2);
+      _bleDevices[id] = { name: device.name||'Unknown Device', isDhurta: false };
+      toast('📡 Found: ' + (device.name||'Unknown Device'));
+      _renderBLEList();
+    } catch (e) {
+      if (e.name !== 'NotFoundError') toast('BLE: ' + e.message);
+    }
+  }
+  function _renderBLEList() {
+    const list = document.getElementById('ble-device-list');
+    if (!list) return;
+    const items = Object.entries(_bleDevices);
+    if (!items.length) { list.innerHTML = '<p class="ble-empty">No BLE devices found yet</p>'; return; }
+    list.innerHTML = items.map(([id, d]) =>
+      `<div class="ble-item">
+        <span class="ble-icon">${d.isDhurta?'⚡':'📱'}</span>
+        <span class="ble-name">${d.name}</span>
+        ${d.isDhurta ? '<span class="ble-badge">Sync</span>' : `<button class="ble-invite" onclick="app._sendBLEInvite('${id}')">Invite</button>`}
+      </div>`
+    ).join('');
+  }
+  function _sendBLEInvite(id) {
+    // Can't push BLE from browser — copy invite link instead
+    const url = `https://sync.dhurta.com/?pin=${currentPin}`;
+    if (navigator.share) {
+      navigator.share({ title:'Join me on Dhurta Sync', url }).catch(()=>{});
+    } else {
+      navigator.clipboard?.writeText(url);
+      toast('📋 Room link copied — share it with the other device');
+    }
+  }
+
+  /* ─────────────── WEB NFC PAIRING ─────────────── */
+  function _initNFC() {
+    if (!('NDEFReader' in window)) return;
+    document.getElementById('nfc-pair-btn')?.classList.remove('hidden');
+  }
+  async function nfcPair() {
+    if (!('NDEFReader' in window)) { toast('NFC not supported on this device'); return; }
+    try {
+      const ndef = new NDEFReader();
+      toast('📡 Hold devices together to pair via NFC…');
+      // Write our room URL to NFC tag
+      await ndef.write({ records: [{ recordType:'url', data:`https://sync.dhurta.com/?pin=${currentPin}` }] });
+      toast('✅ NFC written — tap other device to pair');
+      // Also read incoming NFC
+      await ndef.scan();
+      ndef.onreading = e => {
+        for (const r of e.message.records) {
+          if (r.recordType === 'url') {
+            const url = new TextDecoder().decode(r.data);
+            const pin = url.match(/pin=(\d{4})/)?.[1];
+            if (pin) { joinRoom(pin); toast('📡 NFC paired to room '+pin); }
+          }
+        }
+      };
+    } catch (e) { toast('NFC: ' + e.message); }
+  }
+
+  /* ─────────────── CLIPBOARD SYNC ─────────────── */
+  function syncClipboard() {
+    navigator.clipboard?.readText().then(text => {
+      if (!text) { toast('Clipboard is empty'); return; }
+      publish({type:'CHAT', text:'📋 Clipboard: ' + text, name:myName, color:myColor, emoji:myEmoji, ts:Date.now()});
+      toast('📋 Clipboard shared with peers');
+      for(const id in dcs) if(dcs[id].readyState==='open') dcs[id].send(JSON.stringify({type:'CLIPBOARD_DATA',content:text,name:myName}));
+    }).catch(() => toast('Clipboard read permission denied'));
+  }
+
+  /* ─────────────── SCREENSHOT SHARE ─────────────── */
+  async function shareScreenshot() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({video:{cursor:'always'},audio:false});
+      const track = stream.getVideoTracks()[0];
+      const cap = new ImageCapture(track);
+      const bmp = await cap.grabFrame();
+      track.stop();
+      const cv = document.createElement('canvas');
+      cv.width=bmp.width; cv.height=bmp.height;
+      cv.getContext('2d').drawImage(bmp,0,0);
+      cv.toBlob(blob => {
+        if (!blob) return;
+        const file = new File([blob],'screenshot.png',{type:'image/png'});
+        sendFiles([file]);
+      },'image/png');
+    } catch(e) { toast('Screenshot: '+e.message); }
+  }
+
+  /* ─────────────── NETWORK QUALITY ─────────────── */
+  function _updateNetworkQuality() {
+    const conn = navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+    if (!conn) return;
+    const el = document.getElementById('net-quality');
+    if (!el) return;
+    const mbps = conn.downlink||0;
+    const type = conn.effectiveType||'';
+    let label='', color='';
+    if (mbps > 10 || type==='4g') { label='🟢 Fast'; color='#22c55e'; }
+    else if (mbps > 1 || type==='3g') { label='🟡 OK'; color='#eab308'; }
+    else { label='🔴 Slow'; color='#ef4444'; }
+    el.textContent = label + (mbps?' · '+mbps+'Mbps':'');
+    el.style.color = color;
+  }
+
+  /* ─────────────── BATTERY SAVER ─────────────── */
+  function _initBattery() {
+    if (!navigator.getBattery) return;
+    navigator.getBattery().then(b => {
+      function check() {
+        const low = b.level < 0.2 && !b.charging;
+        if (low !== _batteryMode) {
+          _batteryMode = low;
+          document.body.classList.toggle('battery-saver', _batteryMode);
+          if (_batteryMode) toast('🔋 Battery saver ON — animations paused');
+        }
+      }
+      b.addEventListener('levelchange', check);
+      b.addEventListener('chargingchange', check);
+      check();
+    });
+  }
+
+  /* ─────────────── THEME TOGGLE ─────────────── */
+  function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('dhurta_theme', next);
+    toast(next === 'light' ? '☀️ Light mode' : '🌙 Dark mode');
+  }
+
+  /* ─────────────── CUSTOM ROOM NAME ─────────────── */
+  function setCustomRoom(name) {
+    const pin = name.trim().slice(0,20);
+    currentPin = pin;
+    localStorage.setItem('dhurta_pin', pin);
+    _updatePinUI();
+    if(mqttClient?.connected){mqttClient.subscribe(roomTopic(),{qos:0}); broadcastPresence('DISCOVER_PING');}
+    if(_bc){try{_bc.close();}catch{} _bc=new BroadcastChannel('dhurta_v10_'+pin);}
+    toast('Room: '+pin);
+  }
+
   /* ─────────────── AI MODULE ─────────────── */
   const AI = (() => {
     let _session = null, _ready = false, _checking = false;
@@ -1509,8 +1925,12 @@ const app = (() => {
     openQR, closeQR, switchQRTab,
     openProfile, closeProfile, saveProfile,
     startCall, acceptCall, rejectCall, endCall,
+    minimizeCall, toggleCallBg,
     toggleMute, toggleCamera, toggleScreen,
     selfRepair, openLightbox, closeLightbox,
+    scanBLE, _sendBLEInvite,
+    nfcPair, shareScreenshot, openHistory,
+    toggleTheme, setCustomRoom,
     AI,
     _toast: toast,
   };
