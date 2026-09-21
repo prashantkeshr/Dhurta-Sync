@@ -57,6 +57,9 @@ const app = (() => {
   let _historyDB = null;         // IndexedDB
   let _batteryMode = false;
   let _callBgIdx = 0;
+  let _globalPeers = {};         // peers on the same MQTT broker but different room
+  let _myLocalSubnet = null;     // e.g. '192.168.1' — detected via WebRTC ICE
+  let _globalHbTimer = null;
   const CALL_BACKGROUNDS = ['none','blur','#0d1224','linear-gradient(135deg,#1e1b4b,#0f172a)','linear-gradient(135deg,#0c1a2e,#0d3349)'];
 
   // LAN signalling fallback (same-device multi-tab)
@@ -68,75 +71,16 @@ const app = (() => {
 
   let currentMode = 'transfer';
 
-  /* ─────────────── QR GENERATOR (ISO/IEC 18004) ─────────────── */
-  const QR = (() => {
-    const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
-    let x = 1;
-    for (let i = 0; i < 255; i++) {
-      EXP[i] = x; LOG[x] = i;
-      x <<= 1; if (x & 0x100) x ^= 0x11d;
+  /* ─────────────── QR (via qrcode.js library) ─────────────── */
+  const QR = {
+    render(canvas, text) {
+      if (typeof QRCode === 'undefined') return;
+      QRCode.toCanvas(canvas, text, {
+        width: 260, margin: 2, errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' }
+      }).catch(() => {});
     }
-    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
-    const mul = (a, b) => (!a || !b) ? 0 : EXP[LOG[a] + LOG[b]];
-    const polyMul = (p, q) => {
-      const r = new Uint8Array(p.length + q.length - 1);
-      for (let i = 0; i < p.length; i++)
-        for (let j = 0; j < q.length; j++) r[i+j] ^= mul(p[i], q[j]);
-      return r;
-    };
-    const genPoly = n => { let p = new Uint8Array([1]); for (let i = 0; i < n; i++) p = polyMul(p, new Uint8Array([1, EXP[i]])); return p; };
-    const rsEncode = (data, n) => {
-      const gen = genPoly(n), msg = new Uint8Array(data.length + n); msg.set(data);
-      for (let i = 0; i < data.length; i++) { const c = msg[i]; if (c) for (let j = 0; j < gen.length; j++) msg[i+j] ^= mul(gen[j], c); }
-      return msg.slice(data.length);
-    };
-    const encode = text => {
-      const bytes = new TextEncoder().encode(text), L = bytes.length;
-      const VS = [{v:2,size:25,data:28,blocks:1,ec:16},{v:3,size:29,data:44,blocks:1,ec:26},{v:4,size:33,data:64,blocks:2,ec:18},{v:5,size:37,data:86,blocks:2,ec:24}];
-      const vi = VS.find(v => v.data >= L + 2) || VS[VS.length-1];
-      const {v, size, data:dW, blocks, ec:ecPB} = vi;
-      const bits = [], addBits = (val, len) => { for (let i = len-1; i >= 0; i--) bits.push((val>>i)&1); };
-      addBits(0b0100,4); addBits(L,8); for (const b of bytes) addBits(b,8); addBits(0,4);
-      while (bits.length % 8) bits.push(0);
-      const dB = new Uint8Array(dW);
-      for (let i = 0; i < bits.length/8 && i < dW; i++) for (let b = 0; b < 8; b++) dB[i] = (dB[i]<<1)|(bits[i*8+b]||0);
-      const pads = [0xec,0x11]; for (let i = Math.ceil(bits.length/8); i < dW; i++) dB[i] = pads[i%2];
-      const bSz = Math.floor(dW/blocks), dBlk = [], ecBlk = [];
-      for (let b = 0; b < blocks; b++) { const s = b*bSz, e = b===blocks-1?dW:s+bSz, bl = dB.slice(s,e); dBlk.push(bl); ecBlk.push(rsEncode(bl,ecPB)); }
-      const cw = [], mx = Math.max(...dBlk.map(b=>b.length));
-      for (let i = 0; i < mx; i++) for (const b of dBlk) if (i < b.length) cw.push(b[i]);
-      for (let i = 0; i < ecPB; i++) for (const e of ecBlk) cw.push(e[i]);
-      const mat = Array.from({length:size},()=>new Int8Array(size).fill(-1));
-      const sf = (r,c,val) => { if (r>=0&&r<size&&c>=0&&c<size) mat[r][c]=val; };
-      const finder = (r,c) => { for (let i=0;i<7;i++) for (let j=0;j<7;j++) sf(r+i,c+j,(i===0||i===6||j===0||j===6)?1:(i>=2&&i<=4&&j>=2&&j<=4)?1:0); };
-      finder(0,0); finder(0,size-7); finder(size-7,0);
-      for (let i=0;i<8;i++){sf(7,i,0);sf(i,7,0);sf(7,size-1-i,0);sf(i,size-8,0);sf(size-8,i,0);sf(size-1-i,7,0);}
-      for (let i=8;i<size-8;i++){sf(6,i,i%2===0?1:0);sf(i,6,i%2===0?1:0);}
-      const AL={2:[6,18],3:[6,22],4:[6,26],5:[6,30]};
-      if (AL[v]) { const pos=AL[v]; for (const ar of pos) for (const ac of pos) { if(mat[ar][ac]!==-1)continue; for(let i=-2;i<=2;i++) for(let j=-2;j<=2;j++) sf(ar+i,ac+j,(Math.abs(i)===2||Math.abs(j)===2)?1:(i===0&&j===0)?1:0); } }
-      sf(size-8,8,1);
-      for(let i=0;i<=8;i++){if(mat[8][i]===-1)mat[8][i]=-2;if(mat[i][8]===-1)mat[i][8]=-2;if(mat[size-1-i][8]===-1)mat[size-1-i][8]=-2;if(mat[8][size-1-i]===-1)mat[8][size-1-i]=-2;}
-      let cIdx=0, goingUp=true;
-      const MASK=(r,c)=>(r+c)%2===0;
-      for(let col=size-1;col>=1;col-=2){if(col===6)col--;for(let ri=0;ri<size;ri++){const r=goingUp?size-1-ri:ri;for(let dc=0;dc<=1;dc++){const c=col-dc;if(mat[r][c]===-1){const byte=cIdx<cw.length*8?cw[Math.floor(cIdx/8)]:0;const bit=(byte>>(7-(cIdx%8)))&1;cIdx++;mat[r][c]=MASK(r,c)?bit^1:bit;}}}goingUp=!goingUp;}
-      const fmt=[1,1,1,0,1,1,1,1,1,0,0,0,1,0,0],fXor=[1,0,1,0,1,0,0,0,0,0,1,0,0,1,0];
-      const f=fmt.map((b,i)=>b^fXor[i]);
-      const fp1=[[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
-      const fp2=Array.from({length:7},(_,i)=>[size-1-i,8]).concat([[8,size-8]],Array.from({length:7},(_,i)=>[8,size-7+i]));
-      f.forEach((b,i)=>{sf(...fp1[i],b);if(i<fp2.length)sf(...fp2[i],b);});
-      return {mat,size};
-    };
-    return {
-      render(canvas, text, scale=7) {
-        const {mat,size}=encode(text), q=4, total=(size+q*2)*scale;
-        canvas.width=total; canvas.height=total;
-        const ctx=canvas.getContext('2d');
-        ctx.fillStyle='#fff'; ctx.fillRect(0,0,total,total);
-        ctx.fillStyle='#000';
-        for(let r=0;r<size;r++) for(let c=0;c<size;c++) if(mat[r][c]===1) ctx.fillRect((c+q)*scale,(r+q)*scale,scale,scale);
-      }
-    };
-  })();
+  };
 
   /* ─────────────── AVATAR DRAWING ─────────────── */
   function drawAvatar(canvas, color, emoji, size) {
@@ -308,7 +252,8 @@ const app = (() => {
     const p = String(Math.floor(1000 + Math.random() * 9000));
     localStorage.setItem('dhurta_pin', p); return p;
   }
-  function roomTopic() { return `dhurta_mesh_${VERSION}/room_${currentPin}`; }
+  function roomTopic()   { return `dhurta_mesh_${VERSION}/room_${currentPin}`; }
+  function globalTopic() { return `dhurta_mesh_${VERSION}/global`; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function formatBytes(b) {
     if (b < 1024) return b + ' B';
@@ -368,8 +313,11 @@ const app = (() => {
     catch { _rotateAndReconnect(); return; }
     mqttClient.on('connect', () => {
       mqttClient.subscribe(roomTopic(), {qos:0});
+      mqttClient.subscribe(globalTopic(), {qos:0});
       _setStatus('online', 'Online');
-      broadcastPresence('DISCOVER_PING'); _startHB();
+      broadcastPresence('DISCOVER_PING');
+      _startHB();
+      _broadcastGlobal();
       _subscribeNtfy();
     });
     mqttClient.on('message', (_t, raw) => {
@@ -400,9 +348,24 @@ const app = (() => {
     hbTimer    = setInterval(()=>broadcastPresence('HEARTBEAT'), HB_MS);
     pruneTimer = setInterval(_prunePeers, 2000);
   }
+  function _broadcastGlobal() {
+    clearInterval(_globalHbTimer);
+    const send = () => {
+      if (!mqttClient?.connected) return;
+      mqttClient.publish(globalTopic(), JSON.stringify({
+        from:myId, type:'GLOBAL_PING',
+        name:myName, color:myColor, emoji:myEmoji,
+        pin:currentPin, subnet:_myLocalSubnet, ts:Date.now()
+      }), {qos:0});
+    };
+    send();
+    _globalHbTimer = setInterval(send, 4000);
+  }
+
   function _prunePeers() {
     const now=Date.now(); let changed=false;
     for (const id in peers) if (now-peers[id].lastSeen>PEER_TTL) { delete peers[id]; _closePc(id); changed=true; }
+    for (const id in _globalPeers) if (now-_globalPeers[id].lastSeen>10000) { delete _globalPeers[id]; changed=true; }
     if (changed) { renderRoster(); _renderRadarPeers(); }
   }
 
@@ -423,10 +386,20 @@ const app = (() => {
     if (type==='DISCOVER_PONG') {
       const isNew=!peers[from];
       peers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,lastSeen:Date.now(),ntfy:msg.ntfy};
+      // Remove from global peers if they're now in our room
+      if (_globalPeers[from]) { delete _globalPeers[from]; }
       if (isNew) {
         renderRoster(); _renderRadarPeers();
         setTimeout(()=>_ensureDC(from).catch(()=>{}), 800);
       }
+    }
+    if (type==='GLOBAL_PING') {
+      if (from===myId) return;
+      if (peers[from]) { peers[from].lastSeen=Date.now(); return; } // same room, already handled
+      const isNew=!_globalPeers[from];
+      _globalPeers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,pin:msg.pin,subnet:msg.subnet,lastSeen:Date.now()};
+      if (isNew) _renderRadarPeers();
+      else { const orb=document.getElementById('orb_'+from); if(orb) _updateGlobalOrb(from); }
     }
     // MQTT chat — works even before WebRTC DC is ready
     if (type==='CHAT') {
@@ -1056,29 +1029,40 @@ const app = (() => {
   function _renderRadarPeers() {
     const layer=document.getElementById('peers-layer'); if(!layer)return;
     const peerIds=Object.keys(peers);
+    const globalIds=Object.keys(_globalPeers);
     const hint=document.getElementById('radar-hint');
-    if(hint) hint.style.display=peerIds.length?'none':'flex';
+    if(hint) hint.style.display=(peerIds.length||globalIds.length)?'none':'flex';
 
     // Remove orbs for gone peers
-    layer.querySelectorAll('[data-peer-id]').forEach(el=>{if(!peers[el.dataset.peerId])el.remove();});
+    layer.querySelectorAll('[data-peer-id]').forEach(el=>{
+      const id=el.dataset.peerId;
+      if(!peers[id]&&!_globalPeers[id]) el.remove();
+    });
 
-    const n=peerIds.length; if(!n)return;
+    // Room peers — inner ring R=38%
+    const n=peerIds.length;
     peerIds.forEach((id,i)=>{
       const angle=(i/n)*Math.PI*2-Math.PI/2;
-      const R=38; // % from center
-      const x=50+R*Math.cos(angle);
-      const y=50+R*Math.sin(angle);
+      const x=50+38*Math.cos(angle), y=50+38*Math.sin(angle);
       let orb=document.getElementById('orb_'+id);
-      if(!orb){
-        orb=_createPeerOrb(id);
-        layer.appendChild(orb);
-      }
+      if(!orb){ orb=_createPeerOrb(id); layer.appendChild(orb); }
       orb.style.left=x+'%'; orb.style.top=y+'%';
       const p=peers[id];
       orb.querySelector('.orb-label').textContent=p?.name?.split(' ')[0]||id.slice(0,6);
       const cv=orb.querySelector('canvas'); if(cv) drawAvatar(cv,p?.color||'#555',p?.emoji||'👤',44);
       orb.classList.toggle('selected',id===selectedPeerId);
       orb.classList.toggle('connected',dcs[id]?.readyState==='open');
+    });
+
+    // Global (different-room) peers — outer ring R=64%
+    const ng=globalIds.length;
+    globalIds.forEach((id,i)=>{
+      const angle=(i/ng)*Math.PI*2-Math.PI/2;
+      const x=50+64*Math.cos(angle), y=50+64*Math.sin(angle);
+      let orb=document.getElementById('orb_'+id);
+      if(!orb){ orb=_createGlobalOrb(id); layer.appendChild(orb); }
+      orb.style.left=x+'%'; orb.style.top=y+'%';
+      _updateGlobalOrb(id);
     });
   }
   function _createPeerOrb(id) {
@@ -1094,6 +1078,25 @@ const app = (() => {
     const orb=document.getElementById('orb_'+id); if(!orb)return;
     const p=peers[id]; const cv=orb.querySelector('canvas'); if(cv) drawAvatar(cv,p?.color||'#555',p?.emoji||'👤',44);
     const lb=orb.querySelector('.orb-label'); if(lb) lb.textContent=p?.name?.split(' ')[0]||id.slice(0,6);
+  }
+  function _createGlobalOrb(id) {
+    const p=_globalPeers[id];
+    const orb=document.createElement('div');
+    orb.className='peer-orb global-orb'; orb.id='orb_'+id; orb.dataset.peerId=id;
+    const cv=createAvatarCanvas(p?.color||'#888',p?.emoji||'👤',36);
+    const label=document.createElement('div');label.className='orb-label';label.textContent=p?.name?.split(' ')[0]||id.slice(0,6);
+    const badge=document.createElement('div');badge.className='orb-net-badge';
+    orb.appendChild(cv);orb.appendChild(label);orb.appendChild(badge);
+    orb.onclick=()=>{ toast('Tap to join '+( p?.name||'peer')+'\'s room '+p?.pin); orb.onclick=()=>joinRoom(p?.pin); setTimeout(()=>{ orb.onclick=()=>{ toast('Tap to join '+(p?.name||'peer')+'\'s room '+p?.pin); orb.onclick=()=>joinRoom(p?.pin); }; },2000); };
+    return orb;
+  }
+  function _updateGlobalOrb(id) {
+    const orb=document.getElementById('orb_'+id); if(!orb) return;
+    const p=_globalPeers[id]; if(!p) return;
+    const cv=orb.querySelector('canvas'); if(cv) drawAvatar(cv,p.color||'#888',p.emoji||'👤',36);
+    const lb=orb.querySelector('.orb-label'); if(lb) lb.textContent=p.name?.split(' ')[0]||id.slice(0,6);
+    const badge=orb.querySelector('.orb-net-badge');
+    if(badge) badge.textContent=(p.subnet&&p.subnet===_myLocalSubnet)?'📶':'🌐';
   }
 
   /* ─────────────── ROOM ─────────────── */
@@ -1374,6 +1377,7 @@ const app = (() => {
     _initBLE();
     _initNFC();
     _initBattery();
+    _getLocalSubnet();
 
     // Nav 3D connection animation
     _startNavCanvas();
@@ -1794,6 +1798,26 @@ const app = (() => {
     else { label='🔴 Slow'; color='#ef4444'; }
     el.textContent = label + (mbps?' · '+mbps+'Mbps':'');
     el.style.color = color;
+  }
+
+  /* ─────────────── LOCAL SUBNET DETECTION (WebRTC ICE) ─────────────── */
+  async function _getLocalSubnet() {
+    try {
+      const pc = new RTCPeerConnection({iceServers:[]});
+      pc.createDataChannel('');
+      await pc.createOffer().then(o => pc.setLocalDescription(o));
+      await new Promise(resolve => {
+        const t = setTimeout(resolve, 3000);
+        pc.onicecandidate = e => {
+          if (!e.candidate) return;
+          const m = /([0-9]{1,3}(?:\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
+          if (m && !m[1].startsWith('127.')) {
+            _myLocalSubnet = m[1].split('.').slice(0,3).join('.');
+            clearTimeout(t); pc.close(); resolve();
+          }
+        };
+      });
+    } catch {}
   }
 
   /* ─────────────── BATTERY SAVER ─────────────── */

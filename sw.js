@@ -3,7 +3,7 @@
    Cache-first PWA · Push notification handler
    ============================================================ */
 
-const CACHE = 'dhurta-v8';
+const CACHE = 'dhurta-v9';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const CORE_ASSETS = [
   './llms.txt',
   'https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
 ];
 
 self.addEventListener('install', e => {

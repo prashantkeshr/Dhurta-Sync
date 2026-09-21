@@ -296,6 +296,20 @@ html, body {
 /* DC connected indicator on peer orb */
 .peer-orb.connected .orb-label { color:var(--success); }
 
+/* Global (different-room) peer orb — dimmer, amber accent */
+.global-orb { opacity: 0.6; }
+.global-orb canvas {
+  border-color: rgba(251,191,36,.25) !important;
+  width: 36px !important; height: 36px !important;
+}
+.global-orb:hover { opacity: 0.9; }
+.global-orb:hover canvas { border-color:rgba(251,191,36,.6) !important; box-shadow:0 0 16px rgba(251,191,36,.25) !important; }
+.global-orb .orb-label { color: var(--warning); font-size:9px; }
+.orb-net-badge {
+  position:absolute; top:-5px; right:-5px;
+  font-size:11px; line-height:1; pointer-events:none;
+}
+
 /* Radar hint text */
 .radar-hint {
   position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
