@@ -1087,7 +1087,12 @@ const app = (() => {
     const label=document.createElement('div');label.className='orb-label';label.textContent=p?.name?.split(' ')[0]||id.slice(0,6);
     const badge=document.createElement('div');badge.className='orb-net-badge';
     orb.appendChild(cv);orb.appendChild(label);orb.appendChild(badge);
-    orb.onclick=()=>{ toast('Tap to join '+( p?.name||'peer')+'\'s room '+p?.pin); orb.onclick=()=>joinRoom(p?.pin); setTimeout(()=>{ orb.onclick=()=>{ toast('Tap to join '+(p?.name||'peer')+'\'s room '+p?.pin); orb.onclick=()=>joinRoom(p?.pin); }; },2000); };
+    orb.onclick=()=>{
+      const peer=_globalPeers[id];
+      if(!peer?.pin){toast('Device nearby (no room info)');return;}
+      toast('Joining '+( peer.name||'peer')+'\'s room '+peer.pin+'…');
+      joinRoom(peer.pin);
+    };
     return orb;
   }
   function _updateGlobalOrb(id) {
