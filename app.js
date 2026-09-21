@@ -1148,6 +1148,7 @@ const app = (() => {
     if(mode==='transfer'){ if(_radar)_radar.start(); _renderRadarPeers(); }
     else { if(_radar)_radar.stop(); }
     if(mode==='beam') _renderBeamPeers();
+    if(mode==='chat') switchTab('chat');
   }
 
   /* Beam peers bar */
