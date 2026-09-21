@@ -3,7 +3,7 @@
    Cache-first PWA · Push notification handler
    ============================================================ */
 
-const CACHE = 'dhurta-v7';
+const CACHE = 'dhurta-v8';
 const CORE_ASSETS = [
   './',
   './index.html',
