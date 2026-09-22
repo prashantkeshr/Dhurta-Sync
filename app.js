@@ -1347,7 +1347,24 @@ const app = (() => {
   }
 
   /* ─────────────── PWA ─────────────── */
-  function _registerSW() { if('serviceWorker'in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+  function _registerSW() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Version check: fetch version.json (never cached) and force SW update if stale
+    fetch('version.json?t=' + Date.now(), {cache: 'no-store'})
+      .then(r => r.json())
+      .then(data => {
+        const latest = data.v;
+        const running = parseInt(VERSION.replace('v', ''), 10);
+        if (latest > running) {
+          navigator.serviceWorker.ready.then(reg => reg.update());
+          setTimeout(() => {
+            const ok = confirm('🔄 Dhurta Sync update available! Tap OK to refresh.');
+            if (ok) location.reload(true);
+          }, 1000);
+        }
+      }).catch(() => {});
+  }
 
   /* ─────────────── INIT ─────────────── */
   function init() {
