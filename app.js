@@ -8,7 +8,7 @@
 const app = (() => {
 
   /* ─────────────── CONSTANTS ─────────────── */
-  const VERSION     = 'v10';
+  const VERSION     = 'v11';
   const CHUNK_SIZE  = 256 * 1024;   // 256 KB — 4× faster than 64 KB
   const BUFFER_HIGH = 4 * 1024 * 1024; // 4 MB buffer threshold
   const HB_MS       = 1800;
@@ -401,8 +401,13 @@ const app = (() => {
       if (peers[from]) { peers[from].lastSeen=Date.now(); return; } // same room, already handled
       const isNew=!_globalPeers[from];
       _globalPeers[from]={name:msg.name,color:msg.color,emoji:msg.emoji,pin:msg.pin,subnet:msg.subnet,lastSeen:Date.now()};
-      if (isNew) _renderRadarPeers();
-      else { const orb=document.getElementById('orb_'+from); if(orb) _updateGlobalOrb(from); }
+      if (isNew) {
+        _renderRadarPeers();
+        // Fast-Pair style banner for same-subnet (same WiFi) devices
+        if (msg.subnet && _myLocalSubnet && msg.subnet === _myLocalSubnet) {
+          _showNearbyBanner(from, msg);
+        }
+      } else { const orb=document.getElementById('orb_'+from); if(orb) _updateGlobalOrb(from); }
     }
     // MQTT chat — works even before WebRTC DC is ready
     if (type==='CHAT') {
@@ -1105,6 +1110,44 @@ const app = (() => {
     const lb=orb.querySelector('.orb-label'); if(lb) lb.textContent=p.name?.split(' ')[0]||id.slice(0,6);
     const badge=orb.querySelector('.orb-net-badge');
     if(badge) badge.textContent=(p.subnet&&p.subnet===_myLocalSubnet)?'📶':'🌐';
+  }
+
+  /* ─── Fast-Pair style nearby banner ─── */
+  const _nearbyBanners = new Set();
+  function _showNearbyBanner(id, msg) {
+    if (_nearbyBanners.has(id)) return;
+    _nearbyBanners.add(id);
+    const banner = document.createElement('div');
+    banner.className = 'nearby-banner';
+    banner.id = 'nb_' + id;
+    const av = createAvatarCanvas(msg.color||'#6366f1', msg.emoji||'📱', 36);
+    const info = document.createElement('div');
+    info.className = 'nb-info';
+    info.innerHTML = `<b>${msg.name||'Nearby Device'}</b><span>📶 On your WiFi — tap to connect</span>`;
+    const connect = document.createElement('button');
+    connect.className = 'nb-btn connect';
+    connect.textContent = 'Connect';
+    connect.onclick = () => { _dismissNearbyBanner(id); joinRoom(msg.pin); };
+    const dismiss = document.createElement('button');
+    dismiss.className = 'nb-btn';
+    dismiss.textContent = '✕';
+    dismiss.onclick = () => _dismissNearbyBanner(id);
+    banner.appendChild(av); banner.appendChild(info);
+    banner.appendChild(connect); banner.appendChild(dismiss);
+    document.body.appendChild(banner);
+    requestAnimationFrame(() => banner.classList.add('visible'));
+    // Auto-dismiss after 12 seconds
+    setTimeout(() => _dismissNearbyBanner(id), 12000);
+    // Haptic + notification
+    try { navigator.vibrate?.([100, 50, 100]); } catch {}
+    _showChatNotification(id, msg.name||'Nearby Device', '📶 On your WiFi — tap to connect');
+  }
+  function _dismissNearbyBanner(id) {
+    _nearbyBanners.delete(id);
+    const b = document.getElementById('nb_' + id);
+    if (!b) return;
+    b.classList.remove('visible');
+    setTimeout(() => b.remove(), 300);
   }
 
   /* ─────────────── ROOM ─────────────── */

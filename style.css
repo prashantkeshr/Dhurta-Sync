@@ -296,6 +296,31 @@ html, body {
 /* DC connected indicator on peer orb */
 .peer-orb.connected .orb-label { color:var(--success); }
 
+/* ── Fast-Pair nearby banner ── */
+.nearby-banner {
+  position: fixed; bottom: -120px; left: 50%; transform: translateX(-50%);
+  z-index: 9999; display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid rgba(251,191,36,.4);
+  border-radius: 16px; padding: 10px 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 0 1px rgba(251,191,36,.15);
+  transition: bottom .35s cubic-bezier(.34,1.56,.64,1);
+  max-width: min(420px, 92vw); width: max-content;
+}
+.nearby-banner.visible { bottom: 90px; }
+.nb-info { flex: 1; min-width: 0; }
+.nb-info b { display: block; font-size: 13px; color: var(--text); }
+.nb-info span { font-size: 11px; color: var(--text-muted); }
+.nb-btn {
+  padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.nb-btn.connect {
+  background: var(--accent); color: #fff;
+}
+.nb-btn:not(.connect) {
+  background: transparent; color: var(--text-muted); font-size: 16px; padding: 4px 8px;
+}
+
 /* Global (different-room) peer orb — dimmer, amber accent */
 .global-orb { opacity: 0.6; }
 .global-orb canvas {
