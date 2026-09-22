@@ -1,6 +1,6 @@
 /* ============================================================
    DHURTA SYNC — app.js  (Premium redesign)
-   P2P engine: MQTT mesh · WebRTC DataChannel · Reed-Solomon QR
+   P2P engine: MQTT mesh · WebRTC DataChannel · QR pairing
    UI layer:   Radar mode · Chat mode · Ambient light
    ============================================================ */
 'use strict';
@@ -74,7 +74,10 @@ const app = (() => {
   /* ─────────────── QR (via qrcode.js library) ─────────────── */
   const QR = {
     render(canvas, text) {
-      if (typeof QRCode === 'undefined') return;
+      if (typeof QRCode === 'undefined') {
+        setTimeout(() => QR.render(canvas, text), 300);
+        return;
+      }
       QRCode.toCanvas(canvas, text, {
         width: 260, margin: 2, errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' }

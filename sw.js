@@ -3,12 +3,12 @@
    Cache-first PWA · Push notification handler
    ============================================================ */
 
-const CACHE = 'dhurta-v9';
+const CACHE = 'dhurta-v10';
 const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js',
+  './app.js?v=10',
   './manifest.json',
   './sync.png',
   './sync.svg',
