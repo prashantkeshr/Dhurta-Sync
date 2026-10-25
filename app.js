@@ -62,6 +62,27 @@ const app = (() => {
   let _globalHbTimer = null;
   const CALL_BACKGROUNDS = ['none','blur','#0d1224','linear-gradient(135deg,#1e1b4b,#0f172a)','linear-gradient(135deg,#0c1a2e,#0d3349)'];
 
+  // Perfect Negotiation state
+  const _iceCandidateQueues = {}; // buffer candidates received before remoteDescription is set
+  const _makingOffer = {};        // true while createOffer is in flight for a given peer id
+
+  /* ─────────────── CRC32 ─────────────── */
+  const _CRC32_TABLE = (() => {
+    const t = new Int32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c;
+    }
+    return t;
+  })();
+  function _crc32Update(prev, buf) {
+    let c = prev ^ -1;
+    const b = (buf instanceof ArrayBuffer) ? new Uint8Array(buf) : buf;
+    for (let i = 0; i < b.length; i++) c = _CRC32_TABLE[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+
   // LAN signalling fallback (same-device multi-tab)
   let _bc = null;
   try { _bc = new BroadcastChannel('dhurta_v10_' + (localStorage.getItem('dhurta_pin') || '0000')); } catch {}
@@ -490,10 +511,22 @@ const app = (() => {
   function _getOrCreatePc(id) {
     if (pcs[id]) return pcs[id];
     const pc = new RTCPeerConnection(ICE); pcs[id]=pc;
+    _iceCandidateQueues[id] = [];
+
+    // Perfect Negotiation: lexicographically smaller myId = polite peer
+    const polite = myId < id;
+
+    pc.onnegotiationneeded = async () => {
+      try {
+        _makingOffer[id] = true;
+        await pc.setLocalDescription();
+        publish({type:'OFFER', to:id, sdp:pc.localDescription.sdp});
+      } catch(e) { /* ignore transient errors */ }
+      finally { _makingOffer[id] = false; }
+    };
     pc.onicecandidate = e => {
       if (!e.candidate) return;
-      // Always send — browser already picks fastest path (host > srflx > relay)
-      publish({type:'ICE',to:id,candidate:e.candidate});
+      publish({type:'ICE', to:id, candidate:e.candidate});
     };
     pc.ontrack = e => {
       const v=document.getElementById('call-vid-remote'); if(v) v.srcObject=e.streams[0];
@@ -507,11 +540,12 @@ const app = (() => {
   function _closePc(id) {
     if(pcs[id]){try{pcs[id].close();}catch{}delete pcs[id];}
     if(dcs[id]){try{dcs[id].close();}catch{}delete dcs[id];}
+    delete _iceCandidateQueues[id]; delete _makingOffer[id];
     renderRoster(); _renderRadarPeers();
   }
   function _setupDC(id, dc) {
     dcs[id]=dc; dc.binaryType='arraybuffer';
-    dc.bufferedAmountLowThreshold = 64 * 1024; // 64 KB — set once at creation
+    dc.bufferedAmountLowThreshold = 64 * 1024;
     dc.onopen    = ()=>{ toast('🔒 Secure channel with '+(peers[id]?.name||id.slice(0,6))); renderRoster(); _renderRadarPeers(); };
     dc.onmessage = e=>_handleDCMsg(id,e.data);
     dc.onerror   = ()=>_closePc(id);
@@ -519,59 +553,128 @@ const app = (() => {
   }
   async function _ensureDC(id) {
     if (dcs[id]?.readyState==='open') return dcs[id];
-    const pc=_getOrCreatePc(id);
-    const dc=pc.createDataChannel('dhurta',{ordered:true});
-    _setupDC(id,dc);
-    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
-    publish({type:'OFFER',to:id,sdp:pc.localDescription.sdp,sdpType:'offer'});
-    return new Promise((res,rej)=>{
-      dc.onopen=()=>{ _setupDC(id,dc); res(dc); };
-      dc.onerror=rej; setTimeout(()=>rej(new Error('DC timeout')),15000);
+    const pc = _getOrCreatePc(id);
+    // createDataChannel fires onnegotiationneeded → offer sent automatically
+    const dc = pc.createDataChannel('dhurta', {ordered:true});
+    _setupDC(id, dc);
+    return new Promise((res, rej) => {
+      const origOpen = dc.onopen;
+      dc.onopen = () => { origOpen?.call(dc); res(dc); };
+      dc.onerror = rej;
+      setTimeout(() => rej(new Error('DC timeout')), 15000);
     });
   }
-  async function _handleOffer(from,msg) {
-    if(msg.to&&msg.to!==myId)return;
-    const pc=_getOrCreatePc(from);
-    const offerSdp = typeof msg.sdp==='object' ? msg.sdp.sdp : msg.sdp;
-    await pc.setRemoteDescription(new RTCSessionDescription({type:'offer',sdp:offerSdp}));
-    const ans=await pc.createAnswer(); await pc.setLocalDescription(ans);
-    publish({type:'ANSWER',to:from,sdp:pc.localDescription.sdp,sdpType:'answer'});
+  async function _drainIceCandidates(from, pc) {
+    for (const c of (_iceCandidateQueues[from] || [])) {
+      try { await pc.addIceCandidate(c); } catch {}
+    }
+    _iceCandidateQueues[from] = [];
   }
-  async function _handleAnswer(from,msg) {
-    if(msg.to&&msg.to!==myId)return;
-    const pc=pcs[from]; if(!pc)return;
-    const ansSdp = typeof msg.sdp==='object' ? msg.sdp.sdp : msg.sdp;
-    await pc.setRemoteDescription(new RTCSessionDescription({type:'answer',sdp:ansSdp}));
+  async function _handleOffer(from, msg) {
+    if (msg.to && msg.to !== myId) return;
+    const pc = _getOrCreatePc(from);
+    const polite = myId < from;
+    const offerCollision = _makingOffer[from] || pc.signalingState !== 'stable';
+    // Impolite peer ignores colliding offer to avoid glare
+    if (!polite && offerCollision) return;
+    try {
+      if (offerCollision) await pc.setLocalDescription({type:'rollback'});
+      const offerSdp = typeof msg.sdp === 'object' ? msg.sdp.sdp : msg.sdp;
+      await pc.setRemoteDescription(new RTCSessionDescription({type:'offer', sdp:offerSdp}));
+      await _drainIceCandidates(from, pc);
+      const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+      publish({type:'ANSWER', to:from, sdp:pc.localDescription.sdp});
+    } catch(e) { /* transient signaling error */ }
   }
-  async function _handleIce(from,msg) {
-    if(msg.to&&msg.to!==myId)return;
-    const pc=pcs[from]; if(!pc)return;
-    try{await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));}catch{}
+  async function _handleAnswer(from, msg) {
+    if (msg.to && msg.to !== myId) return;
+    const pc = pcs[from]; if (!pc) return;
+    try {
+      const ansSdp = typeof msg.sdp === 'object' ? msg.sdp.sdp : msg.sdp;
+      await pc.setRemoteDescription(new RTCSessionDescription({type:'answer', sdp:ansSdp}));
+      await _drainIceCandidates(from, pc);
+    } catch(e) { /* transient */ }
+  }
+  async function _handleIce(from, msg) {
+    if (msg.to && msg.to !== myId) return;
+    const pc = pcs[from]; if (!pc) return;
+    const candidate = new RTCIceCandidate(msg.candidate);
+    if (pc.remoteDescription) {
+      try { await pc.addIceCandidate(candidate); } catch {}
+    } else {
+      // Queue until setRemoteDescription completes
+      (_iceCandidateQueues[from] = _iceCandidateQueues[from] || []).push(candidate);
+    }
   }
 
   /* ─────────────── DATA CHANNEL MESSAGES ─────────────── */
   function _handleDCMsg(id, data) {
     if (typeof data==='string') {
       let msg; try{msg=JSON.parse(data);}catch{return;}
-      if(msg.type==='CHAT')         _appendMessage({from:id,text:msg.text,mqttName:msg.name,mqttColor:msg.color});
+      if(msg.type==='CHAT') _appendMessage({from:id,text:msg.text,mqttName:msg.name,mqttColor:msg.color});
+
       if(msg.type==='FILE_META') {
-        const useSW = msg.size > 100*1024*1024 && navigator.serviceWorker?.controller;
-        inTransfers[msg.transferId] = { meta:msg, chunks:[], received:0, startTime:Date.now(), useSW };
-        if (useSW) _initStreamDownload(msg.transferId, msg);
-        _appendIncomingFile(id,msg);
+        const large = msg.size > 50*1024*1024;
+        const xfer  = { meta:msg, chunks:[], received:0, crc:0, startTime:Date.now(),
+                        useSW:false, useOPFS:false, opfsWritable:null, _opfsQueue:null };
+        inTransfers[msg.transferId] = xfer;
+
+        if (large) {
+          const canOPFS = typeof navigator.storage?.getDirectory === 'function';
+          const canSW   = msg.size > 100*1024*1024 && !!navigator.serviceWorker?.controller;
+          if (canOPFS) {
+            xfer._opfsQueue = [];
+            navigator.storage.getDirectory()
+              .then(d => d.getFileHandle(msg.transferId + '.tmp', {create:true}))
+              .then(fh => fh.createWritable())
+              .then(async w => {
+                for (const c of xfer._opfsQueue) await w.write(c);
+                xfer._opfsQueue = null;
+                xfer.opfsWritable = w; xfer.useOPFS = true;
+              })
+              .catch(() => {
+                if (xfer._opfsQueue) { xfer.chunks.push(...xfer._opfsQueue); xfer._opfsQueue = null; }
+                if (canSW) { xfer.useSW = true; _initStreamDownload(msg.transferId, msg); }
+              });
+          } else if (canSW) {
+            xfer.useSW = true;
+            _initStreamDownload(msg.transferId, msg);
+          }
+        }
+        _appendIncomingFile(id, msg);
       }
+
       if(msg.type==='FILE_DONE') {
         const t=inTransfers[msg.transferId]; if(!t)return;
-        if (t.useSW) {
-          navigator.serviceWorker.controller.postMessage({ type:'STREAM_DONE', id:msg.transferId });
+        const _finish = () => {
+          delete inTransfers[msg.transferId];
+          _activeXfers=Math.max(0,_activeXfers-1); if(!_activeXfers&&_particles)_particles.stop();
+        };
+        // CRC32 integrity check
+        if (msg.crc32 !== undefined && t.crc !== msg.crc32) {
+          toast('⚠️ ' + t.meta.name + ': integrity check failed (file may be corrupt)');
+        }
+        if (t.useOPFS && t.opfsWritable) {
+          t.opfsWritable.close().then(async () => {
+            const root = await navigator.storage.getDirectory();
+            const fname = msg.transferId + '.tmp';
+            const fh = await root.getFileHandle(fname);
+            const file = await fh.getFile();
+            _finalizeFile(msg.transferId, file, t.meta);
+            root.removeEntry(fname).catch(()=>{});
+          }).catch(() => toast('⚠️ Could not save ' + t.meta.name))
+            .finally(_finish);
+        } else if (t.useSW) {
+          navigator.serviceWorker.controller.postMessage({type:'STREAM_DONE', id:msg.transferId});
           toast('📥 ' + t.meta.name + ' saved');
           const sp=document.getElementById('fspeed_'+msg.transferId); if(sp) sp.textContent='Complete ✓';
+          _finish();
         } else {
           _finalizeFile(msg.transferId, new Blob(t.chunks, {type:t.meta.mimeType}), t.meta);
+          _finish();
         }
-        delete inTransfers[msg.transferId];
-        _activeXfers=Math.max(0,_activeXfers-1); if(!_activeXfers&&_particles)_particles.stop();
       }
+
       if(msg.type==='CLIPBOARD_DATA') _receiveClipboard(id,msg);
     } else {
       const view=new DataView(data), tIdLen=view.getUint8(0);
@@ -579,8 +682,13 @@ const app = (() => {
       const chunk=data.slice(1+tIdLen);
       const t=inTransfers[tId]; if(!t)return;
       t.received+=chunk.byteLength;
-      if (t.useSW) {
-        navigator.serviceWorker.controller?.postMessage({ type:'STREAM_CHUNK', id:tId, chunk:new Uint8Array(chunk) });
+      t.crc = _crc32Update(t.crc, new Uint8Array(chunk));
+      if (t._opfsQueue !== null) {
+        t._opfsQueue.push(chunk);               // OPFS writable not ready yet
+      } else if (t.useOPFS && t.opfsWritable) {
+        t.opfsWritable.write(chunk).catch(()=>{});
+      } else if (t.useSW) {
+        navigator.serviceWorker.controller?.postMessage({type:'STREAM_CHUNK', id:tId, chunk:new Uint8Array(chunk)});
       } else {
         t.chunks.push(chunk);
       }
@@ -714,8 +822,8 @@ const app = (() => {
       for(const pid of targets){
         const dc=dcs[pid]; if(!dc||dc.readyState!=='open')continue;
         dc.send(JSON.stringify(meta));
-        await _streamFile(file,tId,dc);
-        dc.send(JSON.stringify({type:'FILE_DONE',transferId:tId}));
+        const crc32 = await _streamFile(file,tId,dc);
+        dc.send(JSON.stringify({type:'FILE_DONE',transferId:tId,crc32}));
       }
       _updateFileProgress(tId,100,file.size,file.size,0);
       _activeXfers=Math.max(0,_activeXfers-1); if(!_activeXfers&&_particles)_particles.stop();
@@ -727,17 +835,16 @@ const app = (() => {
     const tIdBytes = new TextEncoder().encode(tId);
     const hdr = new Uint8Array(1 + tIdBytes.length);
     hdr[0] = tIdBytes.length; hdr.set(tIdBytes, 1);
-    let offset = 0; const t0 = Date.now();
+    let offset = 0, crc = 0; const t0 = Date.now();
     while (offset < file.size) {
       if (dc.readyState !== 'open') break;
-      // Yield only when buffer is full — this removes artificial per-chunk delay
-      // and lets WebRTC saturate the channel at full LAN speed (~30-50 MB/s)
       if (dc.bufferedAmount > BUFFER_HIGH) {
         await new Promise(r => {
           dc.onbufferedamountlow = () => { dc.onbufferedamountlow = null; r(); };
         });
       }
       const ab = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+      crc = _crc32Update(crc, new Uint8Array(ab));
       const pkt = new Uint8Array(hdr.length + ab.byteLength);
       pkt.set(hdr); pkt.set(new Uint8Array(ab), hdr.length);
       dc.send(pkt.buffer);
@@ -748,6 +855,7 @@ const app = (() => {
       if (_particles) _particles.speedMBs = speedBs / 1048576;
       _saveTransferHistory(tId, file.name, file.size, 'sending', speedBs);
     }
+    return crc;
   }
 
   /* ── File card builders ── */
@@ -1888,7 +1996,12 @@ const app = (() => {
 
   /* ─────────────── WEB NFC PAIRING ─────────────── */
   function _initNFC() {
-    if (!('NDEFReader' in window)) return;
+    if (!('NDEFReader' in window)) {
+      document.getElementById('nfc-pair-btn')?.classList.add('hidden');
+      document.getElementById('fab-nfc-btn')?.classList.add('hidden');
+      document.querySelectorAll('[data-requires="nfc"]').forEach(el => el.style.display = 'none');
+      return;
+    }
     document.getElementById('nfc-pair-btn')?.classList.remove('hidden');
   }
   async function nfcPair() {
