@@ -227,7 +227,7 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
     <!-- Nearby devices -->
-    <button class="nav-icon-btn" onclick="document.getElementById('ble-modal').classList.remove('hidden')" title="Nearby devices">
+    <button class="nav-icon-btn" onclick="document.getElementById('ble-modal').classList.remove('hidden');app._renderNearbyModal()" title="Nearby devices">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
     </button>
     <!-- History -->
@@ -808,26 +808,54 @@
 <div id="ble-modal" class="modal-back hidden" onclick="if(event.target===this)this.classList.add('hidden')">
   <div class="modal-sheet">
     <div class="sheet-head">
-      <h3>📡 Nearby Devices</h3>
+      <h3>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px;margin-right:6px"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+        Nearby Devices
+      </h3>
       <button class="sheet-x" onclick="document.getElementById('ble-modal').classList.add('hidden')">✕</button>
     </div>
     <div class="sheet-body">
-      <p class="ble-desc">Dhurta users in your room appear automatically. Scan to find other Bluetooth devices and invite them.</p>
-      <button id="ble-scan-btn" class="ble-scan-btn" onclick="app.scanBLE()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/><path d="M2 12a10 10 0 1 1 20 0"/>
-        </svg>
-        Scan Bluetooth
-      </button>
-      <div id="ble-device-list" class="ble-device-list">
-        <p class="ble-empty">Tap "Scan Bluetooth" to find nearby devices</p>
+
+      <!-- Same-network Dhurta users -->
+      <div class="nearby-section" id="nearby-wifi-section">
+        <div class="nearby-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+          Same Network (WiFi / Hotspot)
+        </div>
+        <div id="nearby-wifi-list" class="nearby-list">
+          <p class="ble-empty">No Dhurta users found on your network yet…</p>
+        </div>
       </div>
-      <div class="ble-dhurta-section">
-        <div class="sh-title" style="margin-bottom:8px">Dhurta Sync Users (same room)</div>
-        <div id="peer-list-ble" class="peer-list"></div>
+
+      <!-- Other Dhurta rooms on same broker -->
+      <div class="nearby-section" id="nearby-other-section">
+        <div class="nearby-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Other Dhurta Rooms
+        </div>
+        <div id="nearby-other-list" class="nearby-list">
+          <p class="ble-empty">No users on other rooms detected…</p>
+        </div>
       </div>
+
+      <!-- Bluetooth section -->
+      <div class="nearby-section" id="nearby-ble-section">
+        <div class="nearby-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg>
+          Bluetooth
+        </div>
+        <button id="ble-scan-btn" class="ble-scan-btn" onclick="app.scanBLE()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg>
+          Scan for Bluetooth Devices
+        </button>
+        <div id="ble-device-list" class="nearby-list" style="margin-top:8px">
+          <p class="ble-empty">Tap scan to find nearby Bluetooth devices</p>
+        </div>
+      </div>
+
       <button id="nfc-pair-btn" class="ble-scan-btn hidden" onclick="app.nfcPair()" style="margin-top:8px;background:rgba(6,182,212,.15);color:#06b6d4;border-color:#06b6d4">
-        📡 Pair via NFC
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8.32a7.43 7.43 0 0 1 0 7.36"/><path d="M9.46 6.21a11.76 11.76 0 0 1 0 11.58"/></svg>
+        Pair via NFC
       </button>
     </div>
   </div>
@@ -849,7 +877,7 @@
     <button class="fab-item" onclick="app.syncClipboard()" title="Clipboard">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><path d="M9 12h6M9 16h4"/></svg>
     </button>
-    <button class="fab-item" onclick="document.getElementById('ble-modal').classList.remove('hidden')" title="Nearby">
+    <button class="fab-item" onclick="document.getElementById('ble-modal').classList.remove('hidden');app._renderNearbyModal()" title="Nearby">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
     </button>
     <button class="fab-item" onclick="app.openHistory()" title="History">
@@ -866,7 +894,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

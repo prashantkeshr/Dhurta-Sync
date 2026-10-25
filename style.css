@@ -1356,29 +1356,50 @@ body.battery-saver .brand-icon-img { animation: none !important; }
 .ia-reject span, .ia-accept span { font-size: 10px; margin-top: 2px; }
 
 /* ══════════════════════════════════════════════════
-   BLE NEARBY PANEL
+   NEARBY DEVICES PANEL
 ══════════════════════════════════════════════════ */
-.ble-desc  { font-size:12px; color:var(--t3); margin-bottom:12px; line-height:1.6; }
 .ble-scan-btn {
   display: flex; align-items: center; gap: 8px;
-  background: rgba(129,140,248,.12); border: 1px solid var(--accent);
+  background: var(--accent-dim); border: 1px solid var(--accent);
   color: var(--accent); border-radius: 10px; padding: 10px 18px;
-  font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 12px;
-  transition: background .15s;
+  font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 4px;
+  transition: background .15s; width: 100%;
 }
-.ble-scan-btn:hover { background: rgba(129,140,248,.2); }
-.ble-device-list { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
-.ble-item {
+.ble-scan-btn:hover { background: var(--accent-glow); }
+
+/* Section header */
+.nearby-section { margin-bottom: 18px; }
+.nearby-section-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--t3); margin-bottom: 8px;
+}
+
+/* Item rows */
+.nearby-list  { display: flex; flex-direction: column; gap: 6px; }
+.nearby-item  {
   display: flex; align-items: center; gap: 10px;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 14px;
+  border-radius: 10px; padding: 10px 12px;
 }
-.ble-icon { font-size: 20px; }
-.ble-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--t1); }
-.ble-badge { background: rgba(34,197,94,.15); color: #22c55e; border-radius: 6px; padding: 2px 8px; font-size:11px; font-weight:600; }
-.ble-invite { background: rgba(99,102,241,.15); color: var(--accent); border:none; border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; }
-.ble-empty { color: var(--t3); font-size: 12px; text-align: center; padding: 12px; }
-.ble-dhurta-section { border-top: 1px solid var(--border); padding-top: 14px; }
+.nearby-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.nearby-info  { flex: 1; min-width: 0; }
+.nearby-name  { font-size: 13px; font-weight: 600; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nearby-sub   { font-size: 11px; color: var(--t3); margin-top: 1px; }
+.nearby-action {
+  background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 7px; padding: 4px 12px; font-size: 11px; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: background .15s;
+}
+.nearby-action:hover { background: var(--accent-glow); }
+
+.ble-badge  { background: rgba(34,197,94,.15); color: #22c55e; border-radius: 6px; padding: 2px 8px; font-size:11px; font-weight:600; }
+.ble-empty  { color: var(--t3); font-size: 12px; text-align: center; padding: 12px 4px; }
+.ble-desc   { font-size:12px; color:var(--t3); margin-bottom:12px; line-height:1.6; }
 
 /* ══════════════════════════════════════════════════
    QUICK-ACTION FAB (floating action button)

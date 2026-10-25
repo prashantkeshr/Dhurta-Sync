@@ -3,18 +3,18 @@
    Network-first navigation · SWR vendor assets · Stream proxy
    ============================================================ */
 
-const CACHE        = 'dhurta-v12';
+const CACHE        = 'dhurta-v13';
 const VENDOR_CACHE = 'dhurta-vendor-v1';
 
 const CORE_ASSETS = [
-  './', './index.html', './style.css', './app.js?v=12',
+  './', './index.html', './style.css', './app.js?v=13',
   './manifest.json', './sync.png', './sync.svg',
   './og-image.svg', './robots.txt', './llms.txt', './version.json',
 ];
 const VENDOR_ASSETS = [
   'https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
-  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
+  // qrcode generation uses api.qrserver.com at render time — no library needed
 ];
 
 /* ── In-memory stream controllers for large-file proxy ── */

@@ -8,7 +8,7 @@
 const app = (() => {
 
   /* ─────────────── CONSTANTS ─────────────── */
-  const VERSION     = 'v12';
+  const VERSION     = 'v13';
   const CHUNK_SIZE  = 64 * 1024;    // 64 KB — safe MTU across all mobile browsers
   const BUFFER_HIGH = 256 * 1024;   // 256 KB backpressure threshold
   const HB_MS       = 1800;
@@ -127,17 +127,32 @@ const app = (() => {
     } catch { return null; }
   }
 
-  /* ─────────────── QR (via qrcode.js library) ─────────────── */
+  /* ─────────────── QR (URL-based, no library dependency) ─────────────── */
   const QR = {
     render(canvas, text) {
-      if (typeof QRCode === 'undefined') {
-        setTimeout(() => QR.render(canvas, text), 300);
-        return;
-      }
-      QRCode.toCanvas(canvas, text, {
-        width: 260, margin: 2, errorCorrectionLevel: 'M',
-        color: { dark: '#000000', light: '#ffffff' }
-      }).catch(() => {});
+      const size = 260;
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(img, 0, 0, size, size);
+      };
+      img.onerror = () => {
+        // Offline fallback: show PIN prominently
+        ctx.fillStyle = '#090A0F'; ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#F59E0B';
+        ctx.font = 'bold 56px monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(currentPin || '----', size / 2, size / 2 - 10);
+        ctx.fillStyle = '#a1a1aa';
+        ctx.font = '13px sans-serif';
+        ctx.fillText('Scan unavailable offline', size / 2, size / 2 + 42);
+        ctx.fillText('Enter PIN manually above', size / 2, size / 2 + 60);
+      };
+      img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&margin=2&qzone=2&color=000000&bgcolor=ffffff`;
     }
   };
 
@@ -1970,18 +1985,87 @@ const app = (() => {
       if (e.name !== 'NotFoundError') toast('BLE: ' + e.message);
     }
   }
+  function _renderNearbyModal() {
+    const wifiList  = document.getElementById('nearby-wifi-list');
+    const otherList = document.getElementById('nearby-other-list');
+    const bleList   = document.getElementById('ble-device-list');
+
+    // ── Same-network Dhurta users (matching subnet) ──
+    const wifiPeers = Object.entries(_globalPeers).filter(([,p]) =>
+      _myLocalSubnet && p.subnet === _myLocalSubnet
+    );
+    if (wifiList) {
+      if (wifiPeers.length) {
+        wifiList.innerHTML = wifiPeers.map(([id, p]) => `
+          <div class="nearby-item">
+            <div class="nearby-avatar" style="background:${p.color||'#6366f1'}">${p.emoji||'👤'}</div>
+            <div class="nearby-info">
+              <div class="nearby-name">${_esc(p.name)}</div>
+              <div class="nearby-sub">Room ${p.pin || '?'} · Same network</div>
+            </div>
+            <button class="nearby-action" onclick="app._inviteGlobalPeer('${id}')">Invite</button>
+          </div>`).join('');
+      } else {
+        wifiList.innerHTML = '<p class="ble-empty">No Dhurta users found on your network yet…</p>';
+      }
+    }
+
+    // ── Other rooms on same broker ──
+    const otherPeers = Object.entries(_globalPeers).filter(([,p]) =>
+      !(_myLocalSubnet && p.subnet === _myLocalSubnet)
+    );
+    if (otherList) {
+      if (otherPeers.length) {
+        otherList.innerHTML = otherPeers.map(([id, p]) => `
+          <div class="nearby-item">
+            <div class="nearby-avatar" style="background:${p.color||'#6366f1'}">${p.emoji||'👤'}</div>
+            <div class="nearby-info">
+              <div class="nearby-name">${_esc(p.name)}</div>
+              <div class="nearby-sub">Room ${p.pin || '?'}</div>
+            </div>
+            <button class="nearby-action" onclick="app._inviteGlobalPeer('${id}')">Invite</button>
+          </div>`).join('');
+      } else {
+        otherList.innerHTML = '<p class="ble-empty">No users on other rooms detected…</p>';
+      }
+    }
+
+    // ── BLE devices ──
+    _renderBLEList();
+  }
+
   function _renderBLEList() {
     const list = document.getElementById('ble-device-list');
     if (!list) return;
     const items = Object.entries(_bleDevices);
-    if (!items.length) { list.innerHTML = '<p class="ble-empty">No BLE devices found yet</p>'; return; }
+    if (!items.length) { list.innerHTML = '<p class="ble-empty">Tap scan to find nearby Bluetooth devices</p>'; return; }
     list.innerHTML = items.map(([id, d]) =>
-      `<div class="ble-item">
-        <span class="ble-icon">${d.isDhurta?'⚡':'📱'}</span>
-        <span class="ble-name">${d.name}</span>
-        ${d.isDhurta ? '<span class="ble-badge">Sync</span>' : `<button class="ble-invite" onclick="app._sendBLEInvite('${id}')">Invite</button>`}
+      `<div class="nearby-item">
+        <div class="nearby-avatar" style="background:#1e3a5f">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg>
+        </div>
+        <div class="nearby-info">
+          <div class="nearby-name">${_esc(d.name)}</div>
+          <div class="nearby-sub">Bluetooth${d.isDhurta?' · Dhurta Sync':''}</div>
+        </div>
+        ${d.isDhurta
+          ? '<span class="ble-badge">Sync</span>'
+          : `<button class="nearby-action" onclick="app._sendBLEInvite('${id}')">Invite</button>`}
       </div>`
     ).join('');
+  }
+
+  function _esc(s) { return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function _inviteGlobalPeer(id) {
+    const p = _globalPeers[id]; if (!p) return;
+    const url = `https://sync.dhurta.com/?pin=${currentPin}`;
+    if (navigator.share) {
+      navigator.share({ title:'Join me on Dhurta Sync', text:`${myName} invites you to room ${currentPin}`, url }).catch(()=>{});
+    } else {
+      navigator.clipboard?.writeText(url).catch(()=>{});
+      toast(`📋 Room link copied — share with ${p.name}`);
+    }
   }
   function _sendBLEInvite(id) {
     // Can't push BLE from browser — copy invite link instead
@@ -2227,7 +2311,7 @@ const app = (() => {
     minimizeCall, toggleCallBg,
     toggleMute, toggleCamera, toggleScreen,
     selfRepair, openLightbox, closeLightbox,
-    scanBLE, _sendBLEInvite,
+    scanBLE, _sendBLEInvite, _renderNearbyModal, _inviteGlobalPeer,
     nfcPair, shareScreenshot, openHistory,
     toggleTheme, setCustomRoom,
     AI,
