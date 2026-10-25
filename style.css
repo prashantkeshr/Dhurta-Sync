@@ -6,18 +6,18 @@
 .hidden { display: none !important; }
 
 :root {
-  /* Surface palette */
-  --bg:         #09090b;
-  --surface:    #18181b;
-  --card:       #1c1c1f;
-  --card-hover: #232327;
+  /* Surface palette — OLED-optimised */
+  --bg:         #090A0F;
+  --surface:    #10131A;
+  --card:       rgba(20,24,33,.85);
+  --card-hover: rgba(28,33,46,.90);
   --border:     rgba(255,255,255,.07);
   --border-hi:  rgba(255,255,255,.14);
 
-  /* Brand accent — indigo */
-  --accent:     #818cf8;
-  --accent-dim: rgba(129,140,248,.12);
-  --accent-glow:rgba(129,140,248,.22);
+  /* Brand accent — Electric Amber */
+  --accent:     #F59E0B;
+  --accent-dim: rgba(245,158,11,.12);
+  --accent-glow:rgba(245,158,11,.22);
 
   /* Secondary — teal */
   --teal:       #2dd4bf;

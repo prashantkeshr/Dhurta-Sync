@@ -8,9 +8,9 @@
 const app = (() => {
 
   /* ─────────────── CONSTANTS ─────────────── */
-  const VERSION     = 'v11';
-  const CHUNK_SIZE  = 256 * 1024;   // 256 KB — 4× faster than 64 KB
-  const BUFFER_HIGH = 4 * 1024 * 1024; // 4 MB buffer threshold
+  const VERSION     = 'v12';
+  const CHUNK_SIZE  = 64 * 1024;    // 64 KB — safe MTU across all mobile browsers
+  const BUFFER_HIGH = 256 * 1024;   // 256 KB backpressure threshold
   const HB_MS       = 1800;
   const PEER_TTL    = 7000;
   const WARP_BPS    = 50 * 1024 * 1024; // 50 MB/s target on LAN
@@ -70,6 +70,41 @@ const app = (() => {
   const _ntfyTopic = 'dhurta_' + myId.slice(0, 10);
 
   let currentMode = 'transfer';
+
+  /* ─────────────── AES-GCM signaling encryption ─────────────── */
+  let _sigKey = null;   // CryptoKey for current room, null = no encryption
+
+  async function _deriveRoomKey(pin) {
+    try {
+      const enc  = new TextEncoder();
+      const base = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey(
+        { name:'PBKDF2', salt: enc.encode('dhurta_sync_room_v1'), iterations: 100000, hash:'SHA-256' },
+        base, { name:'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+      );
+    } catch { return null; }
+  }
+
+  async function _encryptPayload(plain) {
+    if (!_sigKey) return { p: plain };           // plaintext fallback
+    try {
+      const iv   = crypto.getRandomValues(new Uint8Array(12));
+      const data = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, _sigKey, new TextEncoder().encode(plain));
+      const out  = new Uint8Array(iv.length + data.byteLength);
+      out.set(iv); out.set(new Uint8Array(data), iv.length);
+      return { e: btoa(String.fromCharCode(...out)) };
+    } catch { return { p: plain }; }
+  }
+
+  async function _decryptPayload(env) {
+    if (env.p) return env.p;                     // plaintext (old client or no key)
+    if (!_sigKey || !env.e) return null;
+    try {
+      const bytes = Uint8Array.from(atob(env.e), c => c.charCodeAt(0));
+      const dec   = await crypto.subtle.decrypt({ name:'AES-GCM', iv: bytes.slice(0,12) }, _sigKey, bytes.slice(12));
+      return new TextDecoder().decode(dec);
+    } catch { return null; }
+  }
 
   /* ─────────────── QR (via qrcode.js library) ─────────────── */
   const QR = {
@@ -323,9 +358,14 @@ const app = (() => {
       _broadcastGlobal();
       _subscribeNtfy();
     });
-    mqttClient.on('message', (_t, raw) => {
-      let msg; try { msg = JSON.parse(raw.toString()); } catch { return; }
-      if (msg.from === myId) return; _handleSignal(msg);
+    mqttClient.on('message', async (_t, raw) => {
+      let env; try { env = JSON.parse(raw.toString()); } catch { return; }
+      if (env.from === myId) return;
+      const plain = await _decryptPayload(env);
+      if (plain === null) return;             // decryption failed (wrong room key)
+      let msg; try { msg = JSON.parse(plain); } catch { return; }
+      if (msg.from === myId) return;
+      _handleSignal(msg);
     });
     mqttClient.on('error', ()=>_rotateAndReconnect());
     mqttClient.on('close', ()=>_rotateAndReconnect());
@@ -336,12 +376,13 @@ const app = (() => {
     currentBrokerIdx++;
     setTimeout(connectMQTT, 1200);
   }
-  function publish(payload) {
+  async function publish(payload) {
     const msg = {from:myId,...payload};
-    const raw = JSON.stringify(msg);
-    if (mqttClient?.connected) mqttClient.publish(roomTopic(), raw, {qos:0});
-    // LAN fallback: BroadcastChannel works same-device multi-tab even without internet
+    // LAN fallback (local only — no encryption needed)
     if (_bc) try { _bc.postMessage(msg); } catch {}
+    if (!mqttClient?.connected) return;
+    const env = await _encryptPayload(JSON.stringify(msg));
+    mqttClient.publish(roomTopic(), JSON.stringify({...env, from:myId}), {qos:0});
   }
   function broadcastPresence(type='HEARTBEAT') {
     publish({type, name:myName, color:myColor, emoji:myEmoji, ts:Date.now(), ntfy:_ntfyTopic});
@@ -432,12 +473,14 @@ const app = (() => {
   }
 
   /* ─────────────── WebRTC ─────────────── */
-  // iceCandidatePoolSize pre-gathers host (LAN) candidates before signalling starts
-  // No TURN server → pure P2P; on same WiFi/hotspot the host candidates resolve locally
   const ICE = {
     iceServers: [
-      {urls:'stun:stun.l.google.com:19302'},
-      {urls:'stun:stun1.l.google.com:19302'},
+      { urls: 'stun:stun.l.google.com:19302'  },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelay', credential: 'openrelay' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelay', credential: 'openrelay' },
     ],
     iceCandidatePoolSize: 10,
     bundlePolicy: 'max-bundle',
@@ -468,6 +511,7 @@ const app = (() => {
   }
   function _setupDC(id, dc) {
     dcs[id]=dc; dc.binaryType='arraybuffer';
+    dc.bufferedAmountLowThreshold = 64 * 1024; // 64 KB — set once at creation
     dc.onopen    = ()=>{ toast('🔒 Secure channel with '+(peers[id]?.name||id.slice(0,6))); renderRoster(); _renderRadarPeers(); };
     dc.onmessage = e=>_handleDCMsg(id,e.data);
     dc.onerror   = ()=>_closePc(id);
@@ -510,15 +554,36 @@ const app = (() => {
     if (typeof data==='string') {
       let msg; try{msg=JSON.parse(data);}catch{return;}
       if(msg.type==='CHAT')         _appendMessage({from:id,text:msg.text,mqttName:msg.name,mqttColor:msg.color});
-      if(msg.type==='FILE_META')    { inTransfers[msg.transferId]={meta:msg,chunks:[],received:0,startTime:Date.now()}; _appendIncomingFile(id,msg); }
-      if(msg.type==='FILE_DONE')    { const t=inTransfers[msg.transferId]; if(!t)return; _finalizeFile(msg.transferId,new Blob(t.chunks,{type:t.meta.mimeType}),t.meta); delete inTransfers[msg.transferId]; _activeXfers=Math.max(0,_activeXfers-1); if(!_activeXfers&&_particles)_particles.stop(); }
+      if(msg.type==='FILE_META') {
+        const useSW = msg.size > 100*1024*1024 && navigator.serviceWorker?.controller;
+        inTransfers[msg.transferId] = { meta:msg, chunks:[], received:0, startTime:Date.now(), useSW };
+        if (useSW) _initStreamDownload(msg.transferId, msg);
+        _appendIncomingFile(id,msg);
+      }
+      if(msg.type==='FILE_DONE') {
+        const t=inTransfers[msg.transferId]; if(!t)return;
+        if (t.useSW) {
+          navigator.serviceWorker.controller.postMessage({ type:'STREAM_DONE', id:msg.transferId });
+          toast('📥 ' + t.meta.name + ' saved');
+          const sp=document.getElementById('fspeed_'+msg.transferId); if(sp) sp.textContent='Complete ✓';
+        } else {
+          _finalizeFile(msg.transferId, new Blob(t.chunks, {type:t.meta.mimeType}), t.meta);
+        }
+        delete inTransfers[msg.transferId];
+        _activeXfers=Math.max(0,_activeXfers-1); if(!_activeXfers&&_particles)_particles.stop();
+      }
       if(msg.type==='CLIPBOARD_DATA') _receiveClipboard(id,msg);
     } else {
       const view=new DataView(data), tIdLen=view.getUint8(0);
       const tId=new TextDecoder().decode(new Uint8Array(data,1,tIdLen));
       const chunk=data.slice(1+tIdLen);
       const t=inTransfers[tId]; if(!t)return;
-      t.chunks.push(chunk); t.received+=chunk.byteLength;
+      t.received+=chunk.byteLength;
+      if (t.useSW) {
+        navigator.serviceWorker.controller?.postMessage({ type:'STREAM_CHUNK', id:tId, chunk:new Uint8Array(chunk) });
+      } else {
+        t.chunks.push(chunk);
+      }
       const pct=(t.received/t.meta.size)*100;
       const elapsed=(Date.now()-t.startTime)/1000||.001;
       const speedBs=t.received/elapsed;
@@ -538,6 +603,13 @@ const app = (() => {
       _particles=new ParticleSystem(cv);
     }
     _particles.start();
+  }
+
+  function _initStreamDownload(tId, meta) {
+    const url = `/stream-download/?id=${encodeURIComponent(tId)}&name=${encodeURIComponent(meta.name)}&mime=${encodeURIComponent(meta.mimeType||'application/octet-stream')}`;
+    const a = document.createElement('a');
+    a.href = url; a.download = meta.name; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
   /* ─────────────── CHAT ─────────────── */
@@ -662,8 +734,7 @@ const app = (() => {
       // and lets WebRTC saturate the channel at full LAN speed (~30-50 MB/s)
       if (dc.bufferedAmount > BUFFER_HIGH) {
         await new Promise(r => {
-          dc.bufferedAmountLowThreshold = BUFFER_HIGH / 2;
-          dc.onbufferedamountlow = r;
+          dc.onbufferedamountlow = () => { dc.onbufferedamountlow = null; r(); };
         });
       }
       const ab = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
@@ -984,7 +1055,7 @@ const app = (() => {
   }
   function _trackCursor() { document.addEventListener('mousemove',e=>{if(!screenStream||!callPeerId)return;publish({type:'CURSOR',to:callPeerId,x:e.screenX/window.screen.width,y:e.screenY/window.screen.height});},{passive:true}); }
   function _handleCursor(from,msg) { if(from!==callPeerId)return; const p=document.getElementById('screen-pointer'),w=p?.parentElement;if(!p||!w)return;p.style.display='block';p.style.left=(msg.x*w.offsetWidth)+'px';p.style.top=(msg.y*w.offsetHeight)+'px'; }
-  function _showVideoDock() { document.getElementById('video-dock')?.classList.add('active'); if(currentMode==='chat') switchTab('chat'); }
+  /* _showVideoDock duplicate removed — use the one above */
 
   /* ─────────────── ROSTER ─────────────── */
   function renderRoster() {
@@ -1163,6 +1234,7 @@ const app = (() => {
     _clearChat();
     renderRoster(); _renderRadarPeers();
     currentPin=pin; localStorage.setItem('dhurta_pin',pin);
+    _deriveRoomKey(pin).then(k => { _sigKey = k; });
     _updatePinUI();
     if(mqttClient?.connected){mqttClient.subscribe(roomTopic(),{qos:0});broadcastPresence('DISCOVER_PING');}
     toast('Joined room '+pin);
@@ -1393,20 +1465,30 @@ const app = (() => {
   function _registerSW() {
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register('sw.js').catch(() => {});
-    // Version check: fetch version.json (never cached) and force SW update if stale
-    fetch('version.json?t=' + Date.now(), {cache: 'no-store'})
-      .then(r => r.json())
-      .then(data => {
-        const latest = data.v;
-        const running = parseInt(VERSION.replace('v', ''), 10);
-        if (latest > running) {
-          navigator.serviceWorker.ready.then(reg => reg.update());
-          setTimeout(() => {
-            const ok = confirm('🔄 Dhurta Sync update available! Tap OK to refresh.');
-            if (ok) location.reload(true);
-          }, 1000);
-        }
-      }).catch(() => {});
+
+    // Auto-reload when a new SW takes control
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      toast('⚡ App updated — reloading…');
+      setTimeout(() => location.reload(), 800);
+    });
+
+    function _checkVersion() {
+      fetch('version.json?t=' + Date.now(), {cache: 'no-store'})
+        .then(r => r.json())
+        .then(data => {
+          const latest = data.v;
+          const running = parseInt(VERSION.replace('v', ''), 10);
+          if (latest > running) {
+            navigator.serviceWorker.ready.then(reg => {
+              reg.update().then(() => {
+                reg.waiting?.postMessage({type:'SKIP_WAITING'});
+              });
+            });
+          }
+        }).catch(() => {});
+    }
+    _checkVersion();
+    setInterval(_checkVersion, 60_000);
   }
 
   /* ─────────────── INIT ─────────────── */
@@ -1418,6 +1500,7 @@ const app = (() => {
     _setupAmbient();
     _registerSW();
     _reqNotifPerm();
+    if (currentPin) _deriveRoomKey(currentPin).then(k => { _sigKey = k; });
     _setupDragDrop();
 
     // Draw avatars
@@ -1751,7 +1834,14 @@ const app = (() => {
 
   /* ─────────────── BLE NEARBY DISCOVERY ─────────────── */
   function _initBLE() {
-    if (!navigator.bluetooth) return;
+    if (!navigator.bluetooth) {
+      // Hide BLE UI entirely on unsupported browsers (iOS Safari, Firefox)
+      document.querySelectorAll('.ble-section,[data-requires="bluetooth"]').forEach(el => el.style.display = 'none');
+      document.getElementById('ble-scan-btn')?.closest('.feature-card')?.style && (
+        document.getElementById('ble-scan-btn').closest('.feature-card').style.display = 'none'
+      );
+      return;
+    }
     // Auto-scan on load (passive — just update state if already requested)
     document.getElementById('ble-scan-btn')?.addEventListener('click', scanBLE);
   }
@@ -1823,15 +1913,7 @@ const app = (() => {
     } catch (e) { toast('NFC: ' + e.message); }
   }
 
-  /* ─────────────── CLIPBOARD SYNC ─────────────── */
-  function syncClipboard() {
-    navigator.clipboard?.readText().then(text => {
-      if (!text) { toast('Clipboard is empty'); return; }
-      publish({type:'CHAT', text:'📋 Clipboard: ' + text, name:myName, color:myColor, emoji:myEmoji, ts:Date.now()});
-      toast('📋 Clipboard shared with peers');
-      for(const id in dcs) if(dcs[id].readyState==='open') dcs[id].send(JSON.stringify({type:'CLIPBOARD_DATA',content:text,name:myName}));
-    }).catch(() => toast('Clipboard read permission denied'));
-  }
+  /* syncClipboard duplicate removed — using the full version above */
 
   /* ─────────────── SCREENSHOT SHARE ─────────────── */
   async function shareScreenshot() {
@@ -1877,8 +1959,12 @@ const app = (() => {
       await new Promise(resolve => {
         const t = setTimeout(resolve, 3000);
         pc.onicecandidate = e => {
-          if (!e.candidate) return;
-          const m = /([0-9]{1,3}(?:\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
+          if (!e.candidate) { clearTimeout(t); pc.close(); resolve(); return; }
+          const cand = e.candidate.candidate;
+          // Only use host candidates; skip relay/srflx and mDNS (.local) addresses
+          if (!cand.includes(' typ host ')) return;
+          if (cand.includes('.local')) return; // Chrome 92+ mDNS obfuscation
+          const m = /([0-9]{1,3}(?:\.[0-9]{1,3}){3})/.exec(cand);
           if (m && !m[1].startsWith('127.')) {
             _myLocalSubnet = m[1].split('.').slice(0,3).join('.');
             clearTimeout(t); pc.close(); resolve();
@@ -1886,6 +1972,13 @@ const app = (() => {
         };
       });
     } catch {}
+    // Fallback: public IP via ipify when behind CGNAT or mDNS-only
+    if (!_myLocalSubnet) {
+      fetch('https://api.ipify.org?format=json', {signal: AbortSignal.timeout(4000)})
+        .then(r => r.json())
+        .then(d => { if (d.ip) _myLocalSubnet = d.ip.split('.').slice(0,3).join('.'); })
+        .catch(() => {});
+    }
   }
 
   /* ─────────────── BATTERY SAVER ─────────────── */
