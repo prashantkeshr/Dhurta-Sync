@@ -11,12 +11,12 @@
 
   <!-- ── Main app ── -->
   <url>
-    <loc>https://sync.dhurta.com/</loc>
+    <loc>https://sync.dhurta.org/</loc>
     <lastmod>2026-09-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://sync.dhurta.com/og-image.svg</image:loc>
+      <image:loc>https://sync.dhurta.org/og-image.svg</image:loc>
       <image:title>Dhurta Sync — Serverless P2P File Sharing &amp; Chat</image:title>
       <image:caption>Radar UI showing peer-to-peer file transfer between devices</image:caption>
     </image:image>
@@ -24,7 +24,7 @@
 
   <!-- ── Transfer mode deep link ── -->
   <url>
-    <loc>https://sync.dhurta.com/?mode=transfer</loc>
+    <loc>https://sync.dhurta.org/?mode=transfer</loc>
     <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -32,7 +32,7 @@
 
   <!-- ── Beam mode deep link ── -->
   <url>
-    <loc>https://sync.dhurta.com/?mode=beam</loc>
+    <loc>https://sync.dhurta.org/?mode=beam</loc>
     <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -40,7 +40,7 @@
 
   <!-- ── Chat mode deep link ── -->
   <url>
-    <loc>https://sync.dhurta.com/?mode=chat</loc>
+    <loc>https://sync.dhurta.org/?mode=chat</loc>
     <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -48,7 +48,7 @@
 
   <!-- ── Supporting files ── -->
   <url>
-    <loc>https://sync.dhurta.com/llms.txt</loc>
+    <loc>https://sync.dhurta.org/llms.txt</loc>
     <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>

@@ -164,7 +164,7 @@ self.addEventListener('message', e => {
       tag:      d.tag    || 'dhurta',
       renotify: true,
       vibrate: [150, 80, 150],
-      data:    { url: 'https://sync.dhurta.com' },
+      data:    { url: 'https://sync.dhurta.org' },
     });
   }
 });
@@ -180,7 +180,7 @@ self.addEventListener('push', e => {
     tag:      data.tag     || 'dhurta',
     renotify: true,
     vibrate: [200, 100, 200],
-    data:    { url: data.url || 'https://sync.dhurta.com' },
+    data:    { url: data.url || 'https://sync.dhurta.org' },
     actions: [
       { action: 'open',    title: 'Open App' },
       { action: 'dismiss', title: 'Dismiss'  },
@@ -191,7 +191,7 @@ self.addEventListener('push', e => {
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   if (e.action === 'dismiss') return;
-  const url = e.notification.data?.url || 'https://sync.dhurta.com';
+  const url = e.notification.data?.url || 'https://sync.dhurta.org';
   e.waitUntil(
     clients.matchAll({ type:'window', includeUncontrolled:true }).then(cs => {
       const c = cs.find(c => c.url.includes('sync.dhurta'));

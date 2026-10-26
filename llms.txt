@@ -39,4 +39,4 @@ No accounts, no file size limits, end-to-end transport encryption via WebRTC DTL
 ## Source
 
 GitHub: https://github.com/prashantkeshr/Dhurta-Sync
-Live:   https://sync.dhurta.com
+Live:   https://sync.dhurta.org

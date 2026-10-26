@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /sw.js
 
-Sitemap: https://sync.dhurta.com/sitemap.xml
+Sitemap: https://sync.dhurta.org/sitemap.xml
 
 # AI crawlers — full access
 User-agent: GPTBot

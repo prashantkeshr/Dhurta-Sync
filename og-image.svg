@@ -68,7 +68,7 @@
   <text x="1027" y="453" font-family="Inter,Arial,sans-serif" font-size="15" fill="#f9a8d4" text-anchor="middle">AI-Powered</text>
 
   <!-- URL -->
-  <text x="680" y="560" font-family="Inter,Arial,sans-serif" font-size="20" fill="#52525b">sync.dhurta.com</text>
+  <text x="680" y="560" font-family="Inter,Arial,sans-serif" font-size="20" fill="#52525b">sync.dhurta.org</text>
 
   <!-- Border accent -->
   <rect x="1" y="1" width="1198" height="628" rx="0" fill="none" stroke="#27272a" stroke-width="2"/>

@@ -13,9 +13,9 @@ No servers. No accounts. No file size limits. No cloud.
 
 <br/>
 
-[![Live App](https://img.shields.io/badge/🚀_Live_App-sync.dhurta.com-818cf8?style=for-the-badge&labelColor=09090b)](https://sync.dhurta.com)
+[![Live App](https://img.shields.io/badge/🚀_Live_App-sync.dhurta.org-818cf8?style=for-the-badge&labelColor=09090b)](https://sync.dhurta.org)
 [![GitHub Pages](https://img.shields.io/badge/Hosted_on-GitHub_Pages-24292e?style=for-the-badge&logo=github&logoColor=white)](https://github.com/prashantkeshr/Dhurta-Sync)
-[![PWA Ready](https://img.shields.io/badge/PWA-Installable-5a67d8?style=for-the-badge&logo=pwa&logoColor=white)](https://sync.dhurta.com)
+[![PWA Ready](https://img.shields.io/badge/PWA-Installable-5a67d8?style=for-the-badge&logo=pwa&logoColor=white)](https://sync.dhurta.org)
 [![WebRTC](https://img.shields.io/badge/P2P-WebRTC-orange?style=for-the-badge)](https://webrtc.org)
 [![AI Powered](https://img.shields.io/badge/AI-Gemini_Nano-4285f4?style=for-the-badge&logo=google&logoColor=white)](https://developer.chrome.com/docs/ai)
 
@@ -54,7 +54,7 @@ Dhurta Sync is a **zero-backend, open-source web application** that lets any two
 ### Open in browser (no install needed)
 
 ```
-https://sync.dhurta.com
+https://sync.dhurta.org
 ```
 
 ### Connect two devices
@@ -125,7 +125,7 @@ Dhurta-Sync/
 ├── sitemap.xml     — URL map with image tags for Google
 ├── llms.txt        — AI/LLM discoverability descriptor
 ├── og-image.svg    — 1200×630 social preview card
-└── CNAME           — sync.dhurta.com (GitHub Pages custom domain)
+└── CNAME           — sync.dhurta.org (GitHub Pages custom domain)
 ```
 
 ---
@@ -231,7 +231,7 @@ Open `http://localhost:8080` in two browser tabs (or two devices on the same net
 | QR Generation | Custom Reed-Solomon GF(256) encoder (pure JS) |
 | AI | [Chrome Prompt API](https://developer.chrome.com/docs/ai/built-in) — Gemini Nano |
 | Hosting | [GitHub Pages](https://pages.github.com) |
-| Domain | [sync.dhurta.com](https://sync.dhurta.com) |
+| Domain | [sync.dhurta.org](https://sync.dhurta.org) |
 | UI Font | [Inter](https://rsms.me/inter/) — Google Fonts |
 
 ---
@@ -240,6 +240,6 @@ Open `http://localhost:8080` in two browser tabs (or two devices on the same net
 
 **Made with ⚡ by [Dhurta](https://dhurta.com)**
 
-[![Live](https://img.shields.io/badge/Try_It_Now-sync.dhurta.com-818cf8?style=for-the-badge&labelColor=09090b)](https://sync.dhurta.com)
+[![Live](https://img.shields.io/badge/Try_It_Now-sync.dhurta.org-818cf8?style=for-the-badge&labelColor=09090b)](https://sync.dhurta.org)
 
 </div>

@@ -1899,7 +1899,7 @@ const app = (() => {
     if (!topic) return;
     fetch(NTFY_BASE + '/' + topic, {
       method: 'POST',
-      headers: { 'Title': title, 'Tags': 'dhurta,sync', 'Priority': '4', 'Actions': 'view, Open App, https://sync.dhurta.com' },
+      headers: { 'Title': title, 'Tags': 'dhurta,sync', 'Priority': '4', 'Actions': 'view, Open App, https://sync.dhurta.org' },
       body,
     }).catch(()=>{});
   }
@@ -2059,7 +2059,7 @@ const app = (() => {
 
   function _inviteGlobalPeer(id) {
     const p = _globalPeers[id]; if (!p) return;
-    const url = `https://sync.dhurta.com/?pin=${currentPin}`;
+    const url = `https://sync.dhurta.org/?pin=${currentPin}`;
     if (navigator.share) {
       navigator.share({ title:'Join me on Dhurta Sync', text:`${myName} invites you to room ${currentPin}`, url }).catch(()=>{});
     } else {
@@ -2069,7 +2069,7 @@ const app = (() => {
   }
   function _sendBLEInvite(id) {
     // Can't push BLE from browser — copy invite link instead
-    const url = `https://sync.dhurta.com/?pin=${currentPin}`;
+    const url = `https://sync.dhurta.org/?pin=${currentPin}`;
     if (navigator.share) {
       navigator.share({ title:'Join me on Dhurta Sync', url }).catch(()=>{});
     } else {
@@ -2094,7 +2094,7 @@ const app = (() => {
       const ndef = new NDEFReader();
       toast('📡 Hold devices together to pair via NFC…');
       // Write our room URL to NFC tag
-      await ndef.write({ records: [{ recordType:'url', data:`https://sync.dhurta.com/?pin=${currentPin}` }] });
+      await ndef.write({ records: [{ recordType:'url', data:`https://sync.dhurta.org/?pin=${currentPin}` }] });
       toast('✅ NFC written — tap other device to pair');
       // Also read incoming NFC
       await ndef.scan();
